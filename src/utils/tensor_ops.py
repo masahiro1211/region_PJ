@@ -12,6 +12,6 @@ def mode_n_product(X: np.ndarray, M: np.ndarray, mode: int) -> np.ndarray:
     X: shape (..., I_n, ...), M: shape (J, I_n)
     戻り値: shape (..., J, ...)
     """
-    result = np.tensordot(M, X, axes=[[1], [mode]])
+    result = np.tensordot(M, X, axes=((1,), (mode,)))
     # tensordot は新軸を先頭に置くので mode の位置に戻す
     return np.moveaxis(result, 0, mode)
