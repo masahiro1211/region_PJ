@@ -5,27 +5,40 @@ from ..decomposition.tucker import perform_tucker, reconstruct
 
 
 @overload
-def approximate(X: np.ndarray, ranks: int, method: Literal["svd"]) -> np.ndarray: ...
+def approximate(
+    X: np.ndarray,
+    ranks: int,
+    method: Literal["svd"],
+) -> np.ndarray: ...
 
 
 @overload
-def approximate(X: np.ndarray, ranks: int | list[int], method: Literal["tucker"] = "tucker") -> np.ndarray: ...
+def approximate(
+    X: np.ndarray,
+    ranks: int | list[int],
+    method: Literal["tucker"] = "tucker",
+) -> np.ndarray: ...
 
 
-def approximate(X: np.ndarray, ranks: int | list[int], method: str = "tucker") -> np.ndarray:
-    """SVD またはタッカー分解による低ランク近似を返す。
+def approximate(
+    X: np.ndarray,
+    ranks: int | list[int],
+    method: str = "tucker",
+) -> np.ndarray:
+    """SVD または Tucker により低ランク近似を計算する。
 
-    Parameters
-    ----------
-    X : ndarray
-        入力テンソル（SVD の場合は 2 次元行列）
-    ranks : int or list of int
-        SVD の場合はスカラー、Tucker の場合は各モードのランクリスト
-    method : {"tucker", "svd"}
+    Args:
+        X: 入力配列。method="svd" の場合は 2 次元行列。
+        ranks: 近似ランク。
+            method="svd" では int、method="tucker" では int または list[int]。
+        method: 近似手法。"svd" または "tucker"。
 
-    Returns
-    -------
-    X_approx : ndarray  近似テンソル
+    Returns:
+        近似後の配列。
+
+    Raises:
+        ValueError: method が未対応、または SVD で X が 2 次元でない場合。
+        TypeError: method="svd" で ranks が int でない場合。
     """
     if method == "svd":
         if X.ndim != 2:
@@ -43,4 +56,6 @@ def approximate(X: np.ndarray, ranks: int | list[int], method: str = "tucker") -
         G, factors = perform_tucker(X, tucker_ranks)
         return reconstruct(G, factors)
 
-    raise ValueError(f"未知の method: {method!r}。'svd' または 'tucker' を指定してください。")
+    raise ValueError(
+        f"未知の method: {method!r}。'svd' または 'tucker' を指定してください。"
+    )

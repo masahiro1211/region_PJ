@@ -3,24 +3,26 @@ from ..utils.tensor_ops import unfold, mode_n_product
 
 
 def perform_tucker(X: np.ndarray, ranks: list[int]):
-    """HOSVD によるタッカー分解を行う。
+    """HOSVD によりタッカー分解を計算する。
 
-    X ≈ G ×_1 U1 ×_2 U2 ... ×_N UN
+    分解形は X ≈ G ×_1 U1 ×_2 U2 ... ×_N UN である。
 
-    Parameters
-    ----------
-    X : ndarray, shape (I_1, I_2, ..., I_N)
-    ranks : list of int, length N
-        各モードのランク [r_1, r_2, ..., r_N]
+    Args:
+        X: 入力テンソル。形状は (I_1, I_2, ..., I_N)。
+        ranks: 各モードランク [r_1, r_2, ..., r_N]。
 
-    Returns
-    -------
-    G : ndarray, shape (r_1, r_2, ..., r_N)  コアテンソル
-    factors : list of ndarray
-        各モードの因子行列 [U_1, ..., U_N], U_n.shape = (I_n, r_n)
+    Returns:
+        G と factors のタプル。
+        G はコアテンソル、factors は各モード因子行列のリスト。
+
+    Raises:
+        ValueError: ranks の長さが X.ndim と一致しない場合。
     """
     if len(ranks) != X.ndim:
-        raise ValueError(f"ranks の長さ ({len(ranks)}) はテンソルの次元数 ({X.ndim}) と一致する必要があります。")
+        raise ValueError(
+            f"ranks の長さ ({len(ranks)}) はテンソルの次元数 ({X.ndim}) "
+            "と一致する必要があります。"
+        )
 
     factors = []
     for mode, rank in enumerate(ranks):
@@ -37,16 +39,14 @@ def perform_tucker(X: np.ndarray, ranks: list[int]):
 
 
 def reconstruct(G: np.ndarray, factors: list[np.ndarray]) -> np.ndarray:
-    """タッカー分解結果からテンソルを再構成する。
+    """タッカー分解結果から元テンソルを再構成する。
 
-    Parameters
-    ----------
-    G : ndarray  コアテンソル
-    factors : list of ndarray  因子行列リスト
+    Args:
+        G: コアテンソル。
+        factors: 因子行列のリスト。
 
-    Returns
-    -------
-    X_approx : ndarray  近似テンソル
+    Returns:
+        再構成テンソル。
     """
     X_approx = G.copy()
     for mode, U in enumerate(factors):

@@ -3,20 +3,18 @@ from scipy import linalg
 
 
 def perform_svd(X: np.ndarray, rank: int):
-    """ランク rank の低ランク SVD 分解を行う。
+    """行列の低ランク SVD 近似因子を返す。
 
-    X ≈ A @ B となる A, B を返す。
-    A = U_r @ sqrt(Sigma_r),  B = sqrt(Sigma_r) @ V_r
+    返り値は X ≈ A @ B を満たす因子であり、
+    A = U_r @ sqrt(Sigma_r), B = sqrt(Sigma_r) @ V_r として構成する。
 
-    Parameters
-    ----------
-    X : ndarray, shape (m, n)
-    rank : int
+    Args:
+        X: 入力行列。形状は (m, n)。
+        rank: 近似ランク。
 
-    Returns
-    -------
-    A : ndarray, shape (m, rank)
-    B : ndarray, shape (rank, n)
+    Returns:
+        A, B のタプル。
+        A の形状は (m, rank)、B の形状は (rank, n)。
     """
     U, s, V = linalg.svd(X, full_matrices=False)
     Ur = U[:, :rank]
