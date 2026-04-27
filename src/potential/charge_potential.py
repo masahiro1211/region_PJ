@@ -63,6 +63,52 @@ def create_k2_grid(N: int, dx: float) -> np.ndarray:
     return K2
 
 
+def create_radial_grid(N: int, L: float) -> tuple[float, np.ndarray]:
+    """1D 動径グリッドを生成する（球対称用）。
+
+    Args:
+        N: グリッド点数。
+        L: 動径方向の領域サイズ。
+
+    Returns:
+        dr, r のタプル。r はセル中心点 r_j = (j + 0.5) * dr。
+    """
+    dr = L / N
+    r = (np.arange(N) + 0.5) * dr
+    return dr, r
+
+
+def compute_potential_1d(rho_r: np.ndarray, r: np.ndarray, dr: float) -> np.ndarray:
+    """球対称密度 ρ(r) から 1D FFT でポテンシャル V(r) を計算する。
+
+    Args:
+        rho_r: 動径グリッド上の電荷密度 ρ(r)。
+        r: 動径グリッド点の配列（セル中心）。
+        dr: 動径格子幅。
+
+    Returns:
+        動径グリッド上のポテンシャル V(r)。
+
+    Notes:
+        置換 u(r) = r·V(r), f(r) = r·ρ(r) を用いると
+        3D Poisson が 1D 方程式 -u'' = 4πf に帰着する。
+        これを FFT で解き V = u/r を返す。
+        k=0 成分はゲージ自由度として 0 に固定する。
+    """
+    N = len(r)
+    k = 2 * np.pi * np.fft.fftfreq(N, d=dr)
+    k2 = k**2
+    k2[0] = 1.0
+
+    f = r * rho_r
+    f_k = np.fft.fft(f)
+    u_k = 4 * np.pi * f_k / k2
+    u_k[0] = 0.0
+    u = np.real(np.fft.ifft(u_k))
+
+    return u / r
+
+
 def compute_potential_fft(rho_grid: np.ndarray, K2: np.ndarray) -> np.ndarray:
     """FFT により電荷密度からポテンシャルを計算する。
 
@@ -252,7 +298,7 @@ def run_charge_potential_demo(
             ]
         )
     if weights is None:
-        weights = np.array([1.0, 0.6, 0.5, 0.4])
+        weights = np.array([1.0, 0, 0, 0])
     if ranks is None:
         ranks = [1, 2, 4, 8, 12, 16]
 
@@ -263,16 +309,21 @@ def run_charge_potential_demo(
     V_ref = compute_potential_fft(rho, K2)
     V_exact = v_analytic_multi(X, Y, Z, centers, weights, alpha)
 
-    V_single_exact = v_analytic_gaussian(R, alpha)
-    V_single_numerical = compute_potential_fft(np.exp(-alpha * R**2), K2)
-
     mask = R < L * mask_radius_ratio
 
-    baseline_shift = constant_shift(V_single_exact, V_single_numerical, mask)
+    # --- 球対称ベースライン: 置換 u = r·V により 1D に帰着 ---
+    dr_1d, r_1d = create_radial_grid(N, L)
+    rho_1d = np.exp(-alpha * r_1d**2)
+    V_single_exact_1d = v_analytic_gaussian(r_1d, alpha)
+    V_single_numerical_1d = compute_potential_1d(rho_1d, r_1d, dr_1d)
+    mask_1d = r_1d < L * mask_radius_ratio
+
+    baseline_shift = constant_shift(V_single_exact_1d, V_single_numerical_1d, mask_1d)
     baseline_error = relative_error(
-        V_single_exact[mask],
-        V_single_numerical[mask] + baseline_shift,
+        V_single_exact_1d[mask_1d],
+        V_single_numerical_1d[mask_1d] + baseline_shift,
     )
+    # ----------------------------------------------------------
 
     ref_shift = constant_shift(V_exact, V_ref, mask)
     ref_error = relative_error(V_exact[mask], V_ref[mask] + ref_shift)
@@ -284,6 +335,7 @@ def run_charge_potential_demo(
         "N": N,
         "L": L,
         "dx": dx,
+        
         "baseline_shift": baseline_shift,
         "baseline_error": baseline_error,
         "ref_error": ref_error,
