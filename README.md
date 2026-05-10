@@ -63,7 +63,7 @@ $$
 \frac{1}{r} \approx \sum_k w_k e^{-\alpha_k r^2}
 $$
 
-のフィッティングは、線形パラメータ $w_k$ と非線形パラメータ $\alpha_k$ を変数射影法 (VARPRO) で同時最適化する（[src/approximation/exp_sum.py](src/approximation/exp_sum.py)）。
+のフィッティングは、線形パラメータ $w_k$ と非線形パラメータ $\alpha_k$ を変数射影法 (VARPRO) で同時最適化する（[src/approximation/exp_sum/varpro.py](src/approximation/exp_sum/varpro.py)）。
 
 - 外側ループ: `L-BFGS-B` で $\log\alpha_k$ を最適化（非線形、$R$ 変数）
 - 内側ループ: 与えられた $\alpha_k$ に対して **NNLS** で $w_k\ge 0$ を解析的に解く
@@ -81,7 +81,7 @@ e^{-\alpha|\mathbf{r}_1-\mathbf{r}_2|^2}
 = e^{-\alpha(x_1-x_2)^2}\,e^{-\alpha(y_1-y_2)^2}\,e^{-\alpha(z_1-z_2)^2}
 $$
 
-3D 畳み込みは **1D Gaussian カーネル $K\in\mathbb{R}^{N\times N}$ を mode-n product で 3 軸に逐次適用**することに帰着する。素朴な評価の $O(N^6)$ から **$O(R\,N^4)$** に削減される（[src/approximation/exp_sum.py](src/approximation/exp_sum.py) `apply_separable_gaussian_3d`）。
+3D 畳み込みは **1D Gaussian カーネル $K\in\mathbb{R}^{N\times N}$ を mode-n product で 3 軸に逐次適用**することに帰着する。素朴な評価の $O(N^6)$ から **$O(R\,N^4)$** に削減される（[src/approximation/exp_sum/separable.py](src/approximation/exp_sum/separable.py) `apply_separable_gaussian_3d`）。
 
 ### 2.4 1D カーネルの低ランク／スパース分解
 
@@ -262,7 +262,12 @@ RPCA は現状ややオーバーヘッドが大きく、$L$ + sparse $S$ を別�
 region_PJ/
 ├── src/
 │   ├── approximation/
-│   │   ├── exp_sum.py              # VARPRO による 1/r ≈ Σ w_k exp(-α_k r²)
+│   │   ├── exp_sum/                # 指数和近似と分離 Gaussian 適用
+│   │   │   ├── models.py           # ExponentialSum
+│   │   │   ├── grid.py             # log-uniform fit/eval grid
+│   │   │   ├── varpro.py           # VARPRO による 1/r ≈ Σ w_k exp(-α_k r²)
+│   │   │   ├── benchmark.py        # rank sweep runner
+│   │   │   └── separable.py        # 3D separable Gaussian application
 │   │   └── low_rank.py             # SVD / Tucker 統一インターフェース
 │   ├── decomposition/
 │   │   ├── svd.py                  # perform_svd
@@ -328,7 +333,9 @@ X_tucker = approximate(X_tensor, ranks=[5, 4, 3], method="tucker")
 ### 指数和フィッティング
 
 ```python
-from src.approximation.exp_sum import LogUniformGrid, VarproOptimizer, BenchmarkRunner
+from src.approximation.exp_sum.benchmark import BenchmarkRunner
+from src.approximation.exp_sum.grid import LogUniformGrid
+from src.approximation.exp_sum.varpro import VarproOptimizer
 
 fit_grid  = LogUniformGrid(r_min=1e-2, r_max=2*3**0.5*20, n_points=2000)
 eval_grid = LogUniformGrid(r_min=1e-2, r_max=2*3**0.5*20, n_points=2000)

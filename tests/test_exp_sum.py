@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.approximation.exp_sum import (
+from src.approximation.exp_sum.separable import (
     apply_1d_kernel_along_axis,
     apply_separable_gaussian_3d,
 )

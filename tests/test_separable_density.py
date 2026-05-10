@@ -1,6 +1,7 @@
 import numpy as np
 
-from src.approximation.exp_sum import ExponentialSum, apply_separable_gaussian_3d
+from src.approximation.exp_sum.models import ExponentialSum
+from src.approximation.exp_sum.separable import apply_separable_gaussian_3d
 from src.potential.separable_density import (
     apply_exp_sum_to_separable_density,
     make_gaussian_density_terms,

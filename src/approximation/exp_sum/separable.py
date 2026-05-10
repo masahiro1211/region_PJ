@@ -1,0 +1,50 @@
+"""Separable Gaussian application for exponential-sum potentials."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from .models import ExponentialSum
+
+
+def apply_1d_kernel_along_axis(
+    kernel: np.ndarray,
+    rho: np.ndarray,
+    axis: int,
+) -> np.ndarray:
+    """3D配列の指定軸に沿って1Dカーネル行列を作用させる。"""
+    return np.moveaxis(np.tensordot(kernel, rho, axes=([1], [axis])), 0, axis)
+
+
+def _apply_1d_kernel_along_axis(
+    kernel: np.ndarray,
+    rho: np.ndarray,
+    axis: int,
+) -> np.ndarray:
+    """後方互換用。新規コードでは apply_1d_kernel_along_axis を使う。"""
+    return apply_1d_kernel_along_axis(kernel, rho, axis)
+
+
+def apply_separable_gaussian_3d(
+    alpha: float, x_axis: np.ndarray, rho: np.ndarray
+) -> np.ndarray:
+    """exp(-α|r1-r2|²) の分離性を利用して 3D ρ に作用させる."""
+    diff = x_axis[:, None] - x_axis[None, :]
+    K_1d = np.exp(-alpha * diff**2)
+    result = apply_1d_kernel_along_axis(K_1d, rho, axis=0)
+    result = apply_1d_kernel_along_axis(K_1d, result, axis=1)
+    result = apply_1d_kernel_along_axis(K_1d, result, axis=2)
+    return result
+
+
+def apply_exp_sum_potential_3d(
+    fit: ExponentialSum,
+    x_axis: np.ndarray,
+    rho: np.ndarray,
+    dx: float,
+) -> np.ndarray:
+    """指数和近似 K(r) ≈ Σ_k w_k exp(-α_k r²) で V = (K * ρ) dx³ を計算する."""
+    V = np.zeros_like(rho)
+    for w_k, alpha_k in zip(fit.weights, fit.alphas):
+        V += w_k * apply_separable_gaussian_3d(alpha_k, x_axis, rho)
+    return V * dx**3

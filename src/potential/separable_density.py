@@ -7,7 +7,7 @@ from typing import Sequence
 
 import numpy as np
 
-from src.approximation.exp_sum import ExponentialSum
+from src.approximation.exp_sum.models import ExponentialSum
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from src.approximation.exp_sum import ExponentialSum
+from src.approximation.exp_sum.models import ExponentialSum
 from src.potential.charge_potential import v_analytic_gaussian
 from src.potential.separable_density import (
     apply_exp_sum_to_separable_density,
@@ -229,7 +229,9 @@ def compare_exp_sum_discretization(
         compute_grid_energy_reference(N=N, L=L, alpha=alpha)
         for N in N_values
     ]
-    rank_rows: dict[int, list[ExpSumEnergyError]] = {rank: [] for rank in ranks}
+    rank_rows: dict[int, list[ExpSumEnergyError]] = {
+        rank: [] for rank in ranks
+    }
 
     for rank in ranks:
         fit = fits[rank]
