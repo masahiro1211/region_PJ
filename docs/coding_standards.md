@@ -18,16 +18,43 @@
 ## 3. ドックストリング
 
 1. すべての公開関数に日本語ドックストリングを付与する。
-2. 形式は以下を推奨する。
+2. 形式は NumPy/SciPy 風の docstring を推奨する。
 
 - 要約行
 - 空行
-- Args
+- Parameters
 - Returns
 - Raises（必要な場合）
 - Notes（必要な場合）
 
 3. 何を返すかだけでなく、前提条件や例外条件を明記する。
+4. 配列引数・返り値には可能な範囲で shape を書く。
+
+例:
+
+```python
+def apply_separable_kernel_3d(
+    alpha: float,
+    x: np.ndarray,
+    rho: np.ndarray,
+) -> np.ndarray:
+    """3D Gaussian カーネルを密度テンソルに作用させる。
+
+    Parameters
+    ----------
+    alpha : float
+        Gaussian の幅パラメータ。
+    x : np.ndarray, shape (N,)
+        1D グリッド点の座標配列。
+    rho : np.ndarray, shape (N, N, N)
+        電荷密度テンソル。
+
+    Returns
+    -------
+    result : np.ndarray, shape (N, N, N)
+        exp(-alpha |r1-r2|^2) カーネルで rho を畳み込んだ結果。
+    """
+```
 
 ## 4. 数値実装の注意点
 
