@@ -127,12 +127,28 @@ def make_sparse_csr_tensor(
         ``dtype=torch.float64`` の sparse CSR Tensor。
     """
     torch_mod = _require_torch()
+    indptr_tensor = torch_mod.as_tensor(
+        indptr.copy(),
+        dtype=torch_mod.int64,
+    ).contiguous()
+    indices_tensor = torch_mod.as_tensor(
+        indices.copy(),
+        dtype=torch_mod.int64,
+    ).contiguous()
+    data_tensor = torch_mod.as_tensor(
+        data.copy(),
+        dtype=torch_mod.float64,
+    ).contiguous()
+
+    # PyTorch の invariant check は nnz=0 の CSR で
+    # contiguous 判定に失敗することがあるため、空行列だけ明示的に外す。
+    check_invariants = data_tensor.numel() > 0
     return torch_mod.sparse_csr_tensor(
-        torch_mod.as_tensor(indptr.copy(), dtype=torch_mod.int64).contiguous(),
-        torch_mod.as_tensor(indices.copy(), dtype=torch_mod.int64).contiguous(),
-        torch_mod.as_tensor(data.copy(), dtype=torch_mod.float64).contiguous(),
+        indptr_tensor,
+        indices_tensor,
+        data_tensor,
         size=shape,
-        check_invariants=True,
+        check_invariants=check_invariants,
     )
 
 

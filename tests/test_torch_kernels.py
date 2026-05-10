@@ -5,7 +5,9 @@ torch = pytest.importorskip("torch")
 
 pytestmark = [
     pytest.mark.filterwarnings("ignore:Sparse invariant checks.*:UserWarning"),
-    pytest.mark.filterwarnings("ignore:Sparse CSR tensor support.*:UserWarning"),
+    pytest.mark.filterwarnings(
+        "ignore:Sparse CSR tensor support.*:UserWarning"
+    ),
 ]
 
 from src.approximation.torch_kernels import (  # noqa: E402
@@ -107,5 +109,19 @@ def test_apply_sparse_axis_matches_dense_axis():
 
     actual = apply_sparse_axis(sparse, rho, axis=2).numpy()
     expected = apply_dense_axis(dense, rho, axis=2).numpy()
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_apply_sparse_axis_accepts_empty_csr_matrix():
+    """全ゼロのCSR行列もPyTorch sparse CSRとして扱える。"""
+    sparse_np = np.zeros((4, 4), dtype=float)
+    rho_np = np.arange(64, dtype=float).reshape(4, 4, 4)
+    indptr, indices, data = _dense_to_csr_arrays(sparse_np)
+    sparse = make_sparse_csr_tensor(indptr, indices, data, sparse_np.shape)
+    rho = to_float64_tensor(rho_np)
+
+    actual = apply_sparse_axis(sparse, rho, axis=1).numpy()
+    expected = np.zeros_like(rho_np)
 
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
