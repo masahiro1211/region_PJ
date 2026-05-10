@@ -152,6 +152,227 @@ def make_sparse_csr_tensor(
     )
 
 
+def apply_exp_sum_3d_full(
+    rho: Any,
+    kernel_list: list,
+) -> Any:
+    """フルカーネルを3軸に密行列 tensordot で作用させる。
+
+    各指数和項で N×N の密行列カーネルを3軸すべてに適用する。
+    計算量は O(3 K N^4)。速度比較の基準実装。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    kernel_list : list of (float, torch.Tensor shape (N, N))
+        各指数和項の重みと N×N フル行列カーネルのリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        ポテンシャルテンソル（dx^3 スケーリングなし）。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, K in kernel_list:
+        tmp = apply_dense_axis(K, rho, axis=0)
+        tmp = apply_dense_axis(K, tmp, axis=1)
+        tmp = apply_dense_axis(K, tmp, axis=2)
+        out = out + w_k * tmp
+    return out
+
+
+def apply_exp_sum_3d_lowrank_naive(
+    rho: Any,
+    kernel_list: list,
+) -> Any:
+    """低ランク因子を再構成してから3軸に作用させる（ナイーブ実装）。
+
+    K_r = (U_r Σ_r) @ Vt_r と N×N に再構成してから tensordot する
+    ため O(N^4) のまま。``apply_exp_sum_3d_lowrank`` との速度比較用。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    kernel_list : list of (float, U, s, Vt)
+        各指数和項の重みと低ランク SVD 因子のリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        ポテンシャルテンソル（dx^3 スケーリングなし）。
+
+    Notes
+    -----
+    計算量は O(K N^4)。``apply_exp_sum_3d_lowrank`` が O(K r N^3)
+    であることと対比するベンチマーク用途のみを想定した実装。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, U_r, s_r, Vt_r in kernel_list:
+        K_r = (U_r * s_r) @ Vt_r
+        tmp = apply_dense_axis(K_r, rho, axis=0)
+        tmp = apply_dense_axis(K_r, tmp, axis=1)
+        tmp = apply_dense_axis(K_r, tmp, axis=2)
+        out = out + w_k * tmp
+    return out
+
+
+def apply_exp_sum_3d_lowrank(
+    rho: Any,
+    kernel_list: list,
+) -> Any:
+    """低ランク因子を mode-n product の順序で3軸に作用させる。
+
+    K_r を再構成せず Vt_r → Σ_r → U_r の順でテンソルに作用させ、
+    中間軸の次元を r に抑える。計算量は O(K r N^3)。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    kernel_list : list of (float, U, s, Vt)
+        各指数和項の重みと低ランク SVD 因子のリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        ポテンシャルテンソル（dx^3 スケーリングなし）。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, U_r, s_r, Vt_r in kernel_list:
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+        out = out + w_k * tmp
+    return out
+
+
+def apply_exp_sum_3d_rpca(
+    rho: Any,
+    lowrank_only_list: list,
+    dense_list: list,
+) -> Any:
+    """rPCA (L+S) カーネルを3軸に作用させる。
+
+    L 成分は低ランク mode-n product、S 成分は密行列 tensordot で
+    それぞれ適用し、各軸で加算する。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    lowrank_only_list : list of (float, U, s, Vt)
+        S=0 の項の重みと L 成分の低ランク因子のリスト。
+    dense_list : list of (float, U, s, Vt, S_dense)
+        S≠0 の項の重みと L 成分の低ランク因子および密行列 S のリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        (L+S) カーネルを3軸に作用させたポテンシャルテンソル
+        （dx^3 スケーリングなし）。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, U_r, s_r, Vt_r in lowrank_only_list:
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+        out = out + w_k * tmp
+    for w_k, U_r, s_r, Vt_r, S_dense in dense_list:
+        tmp = (
+            apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+            + apply_dense_axis(S_dense, rho, axis=0)
+        )
+        tmp = (
+            apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+            + apply_dense_axis(S_dense, tmp, axis=1)
+        )
+        tmp = (
+            apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+            + apply_dense_axis(S_dense, tmp, axis=2)
+        )
+        out = out + w_k * tmp
+    return out
+
+
+def apply_exp_sum_3d_rpca_l_only(
+    rho: Any,
+    lowrank_only_list: list,
+    dense_list: list,
+) -> Any:
+    """rPCA の L 成分（全項）のみを3軸に作用させる。
+
+    ``lowrank_only_list`` の全項と ``dense_list`` の L 部分を
+    低ランク mode-n product で適用する。S 成分は無視。
+    計算量は O(K r N^3)。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    lowrank_only_list : list of (float, U, s, Vt)
+        S=0 の項の重みと低ランク因子のリスト。
+    dense_list : list of (float, U, s, Vt, S_dense)
+        S≠0 の項の重みと低ランク因子および密行列 S のリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        L 成分のみを3軸に作用させたポテンシャルテンソル
+        （dx^3 スケーリングなし）。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, U_r, s_r, Vt_r in lowrank_only_list:
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+        out = out + w_k * tmp
+    for w_k, U_r, s_r, Vt_r, _ in dense_list:
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+        out = out + w_k * tmp
+    return out
+
+
+def apply_exp_sum_3d_rpca_s_only(
+    rho: Any,
+    dense_list: list,
+) -> Any:
+    """rPCA の S 成分（dense 項のみ）を3軸に作用させる。
+
+    ``dense_list`` の S 部分だけを密行列 tensordot で適用する。
+    L 成分は無視。S が密のため計算量は O(K N^4)。
+
+    Parameters
+    ----------
+    rho : torch.Tensor, shape (N, N, N)
+        電荷密度テンソル。
+    dense_list : list of (float, U, s, Vt, S_dense)
+        S≠0 の項の重みと低ランク因子および密行列 S のリスト。
+
+    Returns
+    -------
+    out : torch.Tensor, shape (N, N, N)
+        S 成分のみを3軸に作用させたポテンシャルテンソル
+        （dx^3 スケーリングなし）。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, _, _, _, S_dense in dense_list:
+        tmp = apply_dense_axis(S_dense, rho, axis=0)
+        tmp = apply_dense_axis(S_dense, tmp, axis=1)
+        tmp = apply_dense_axis(S_dense, tmp, axis=2)
+        out = out + w_k * tmp
+    return out
+
+
 def apply_sparse_axis(
     sparse_kernel: Any,
     rho: Any,
