@@ -181,9 +181,37 @@ class BenchmarkRunner:
         print(f"Saved → {path}")
 
 
-def _apply_1d_kernel_along_axis(K: np.ndarray, rho: np.ndarray, axis: int) -> np.ndarray:
-    """3D 配列 rho の指定軸に沿って (N, N) の行列 K を作用させる."""
-    return np.moveaxis(np.tensordot(K, rho, axes=([1], [axis])), 0, axis)
+def apply_1d_kernel_along_axis(
+    kernel: np.ndarray,
+    rho: np.ndarray,
+    axis: int,
+) -> np.ndarray:
+    """3D配列の指定軸に沿って1Dカーネル行列を作用させる。
+
+    Parameters
+    ----------
+    kernel : np.ndarray, shape (N, N)
+        指定軸方向に作用させる1Dカーネル行列。
+    rho : np.ndarray, shape (N, N, N)
+        カーネルを作用させる3Dテンソル。
+    axis : int
+        カーネルを作用させる軸。0, 1, 2 のいずれか。
+
+    Returns
+    -------
+    result : np.ndarray, shape (N, N, N)
+        ``rho`` の ``axis`` 方向に ``kernel`` を作用させた結果。
+    """
+    return np.moveaxis(np.tensordot(kernel, rho, axes=([1], [axis])), 0, axis)
+
+
+def _apply_1d_kernel_along_axis(
+    kernel: np.ndarray,
+    rho: np.ndarray,
+    axis: int,
+) -> np.ndarray:
+    """後方互換用。新規コードでは apply_1d_kernel_along_axis を使う。"""
+    return apply_1d_kernel_along_axis(kernel, rho, axis)
 
 
 def apply_separable_gaussian_3d(
@@ -197,9 +225,9 @@ def apply_separable_gaussian_3d(
     """
     diff = x_axis[:, None] - x_axis[None, :]
     K_1d = np.exp(-alpha * diff ** 2)
-    result = _apply_1d_kernel_along_axis(K_1d, rho, axis=0)
-    result = _apply_1d_kernel_along_axis(K_1d, result, axis=1)
-    result = _apply_1d_kernel_along_axis(K_1d, result, axis=2)
+    result = apply_1d_kernel_along_axis(K_1d, rho, axis=0)
+    result = apply_1d_kernel_along_axis(K_1d, result, axis=1)
+    result = apply_1d_kernel_along_axis(K_1d, result, axis=2)
     return result
 
 

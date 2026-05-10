@@ -3,6 +3,7 @@ from .exp_sum import (
     LogUniformGrid,
     VarproOptimizer,
     BenchmarkRunner,
+    apply_1d_kernel_along_axis,
     apply_separable_gaussian_3d,
     apply_exp_sum_potential_3d,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "LogUniformGrid",
     "VarproOptimizer",
     "BenchmarkRunner",
+    "apply_1d_kernel_along_axis",
     "apply_separable_gaussian_3d",
     "apply_exp_sum_potential_3d",
     "approximate",

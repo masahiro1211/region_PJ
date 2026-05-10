@@ -13,6 +13,8 @@
   `np.testing.assert_allclose` を使う。
 - notebook 規模の重い実験は unit test ではなく notebook または
   benchmark に置く。
+- PyTorch など optional dependency に依存するテストは
+  `pytest.importorskip("torch")` で、その依存が無い環境では skip する。
 
 推奨コマンド:
 
