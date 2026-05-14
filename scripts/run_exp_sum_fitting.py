@@ -9,22 +9,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
+from src.approximation.exp_sum.benchmark import BenchmarkRunner
+from src.approximation.exp_sum.grid import LogUniformGrid
+from src.approximation.exp_sum.varpro import VarproOptimizer
+from src.utils.cache import cache_path
+from src.utils.cache import exp_sum_label
+from src.utils.cache import load_or_compute
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.approximation.exp_sum.benchmark import BenchmarkRunner  # noqa: E402
-from src.approximation.exp_sum.grid import LogUniformGrid  # noqa: E402
-from src.approximation.exp_sum.varpro import VarproOptimizer  # noqa: E402
-from src.utils.cache import cache_path  # noqa: E402
-from src.utils.cache import load_or_compute  # noqa: E402
-from scripts._io import exp_sum_label  # noqa: E402
 
 
 parser = argparse.ArgumentParser(

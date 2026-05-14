@@ -9,25 +9,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.approximation.exp_sum.models import ExponentialSum  # noqa: E402
-from src.potential.charge_potential import v_analytic_gaussian  # noqa: E402
-from src.potential.gaussian_discretization import (  # noqa: E402
+from src.approximation.exp_sum.models import ExponentialSum
+from src.potential.charge_potential import v_analytic_gaussian
+from src.potential.gaussian_discretization import (
     compute_rpca_error_sweep,
 )
-from src.utils.grid import build_xyz  # noqa: E402
-from scripts._io import exp_sum_label as make_exp_sum_label  # noqa: E402
-from scripts._io import load_rpca_1d_list  # noqa: E402
-from scripts._io import rpca_label as make_rpca_label  # noqa: E402
+from src.utils.cache import exp_sum_label as make_exp_sum_label
+from src.utils.cache import load_rpca_1d_list
+from src.utils.cache import rpca_label as make_rpca_label
+from src.utils.grid import build_xyz
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 DEFAULT_THRESHOLDS = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]

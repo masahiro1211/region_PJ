@@ -9,25 +9,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.decomposition.rpca import randomized_rpca  # noqa: E402
-from src.potential.separable_density import (  # noqa: E402
+from src.decomposition.rpca import randomized_rpca
+from src.potential.separable_density import (
     build_gaussian_kernel_1d,
 )
-from src.utils.cache import cache_path  # noqa: E402
-from src.utils.cache import load_or_compute  # noqa: E402
-from src.utils.grid import build_xyz  # noqa: E402
-from scripts._io import exp_sum_label as make_exp_sum_label  # noqa: E402
-from scripts._io import rpca_label  # noqa: E402
+from src.utils.cache import cache_path
+from src.utils.cache import exp_sum_label as make_exp_sum_label
+from src.utils.cache import load_or_compute
+from src.utils.cache import rpca_label
+from src.utils.grid import build_xyz
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 parser = argparse.ArgumentParser(
