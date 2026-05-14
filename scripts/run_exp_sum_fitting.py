@@ -24,6 +24,7 @@ from src.approximation.exp_sum.grid import LogUniformGrid  # noqa: E402
 from src.approximation.exp_sum.varpro import VarproOptimizer  # noqa: E402
 from src.utils.cache import cache_path  # noqa: E402
 from src.utils.cache import load_or_compute  # noqa: E402
+from scripts._io import exp_sum_label  # noqa: E402
 
 
 parser = argparse.ArgumentParser(
@@ -46,10 +47,14 @@ n_points = 2000
 r_min = 1e-2
 r_max = 2 * np.sqrt(3) * L
 
-out_label = (
-    f"L{L:g}_rmin{r_min:.0e}_rmax{r_max:.6g}_n{n_points}"
-    f"_nonneg{int(nonneg)}_iter{max_iter}"
-    f"_R{min(ranks):02d}-{max(ranks):02d}_count{len(ranks)}"
+out_label = exp_sum_label(
+    L=L,
+    ranks=ranks,
+    nonneg=nonneg,
+    max_iter=max_iter,
+    n_points=n_points,
+    r_min=r_min,
+    r_max=r_max,
 )
 
 

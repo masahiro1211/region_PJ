@@ -6,6 +6,7 @@ from .gaussian_discretization import (
     compare_exp_sum_discretization,
     compute_exp_sum_energy_error,
     compute_grid_energy_reference,
+    compute_rpca_error_sweep,
 )
 from .regularized_coulomb import (
     build_regularized_coulomb_kernel_1d,
@@ -41,6 +42,7 @@ __all__ = [
     "compare_exp_sum_discretization",
     "compute_exp_sum_energy_error",
     "compute_grid_energy_reference",
+    "compute_rpca_error_sweep",
     "build_regularized_coulomb_kernel_1d",
     "build_regularized_coulomb_kernel_3d",
     "build_regularized_coulomb_kernel_from_distances",

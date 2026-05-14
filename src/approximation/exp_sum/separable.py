@@ -25,16 +25,37 @@ def _apply_1d_kernel_along_axis(
     return apply_1d_kernel_along_axis(kernel, rho, axis)
 
 
+def apply_3d_kernel(
+    kernel_1d: np.ndarray,
+    rho_grid: np.ndarray,
+) -> np.ndarray:
+    """1D カーネルを 3 軸すべてに順次作用させる。
+
+    Parameters
+    ----------
+    kernel_1d
+        各軸に作用させる 1D カーネル行列。shape は ``(N, N)``。
+    rho_grid
+        入力密度グリッド。shape は ``(N, N, N)``。
+
+    Returns
+    -------
+    np.ndarray
+        3 軸すべてに ``kernel_1d`` を作用させた配列。
+        shape は ``(N, N, N)``。
+    """
+    result = apply_1d_kernel_along_axis(kernel_1d, rho_grid, axis=0)
+    result = apply_1d_kernel_along_axis(kernel_1d, result, axis=1)
+    return apply_1d_kernel_along_axis(kernel_1d, result, axis=2)
+
+
 def apply_separable_gaussian_3d(
     alpha: float, x_axis: np.ndarray, rho: np.ndarray
 ) -> np.ndarray:
     """exp(-α|r1-r2|²) の分離性を利用して 3D ρ に作用させる."""
     diff = x_axis[:, None] - x_axis[None, :]
     K_1d = np.exp(-alpha * diff**2)
-    result = apply_1d_kernel_along_axis(K_1d, rho, axis=0)
-    result = apply_1d_kernel_along_axis(K_1d, result, axis=1)
-    result = apply_1d_kernel_along_axis(K_1d, result, axis=2)
-    return result
+    return apply_3d_kernel(K_1d, rho)
 
 
 def apply_exp_sum_potential_3d(

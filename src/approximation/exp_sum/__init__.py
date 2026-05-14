@@ -9,6 +9,7 @@ from .grid import LogUniformGrid
 from .models import ExponentialSum
 from .separable import (
     _apply_1d_kernel_along_axis,
+    apply_3d_kernel,
     apply_1d_kernel_along_axis,
     apply_exp_sum_potential_3d,
     apply_separable_gaussian_3d,
@@ -20,6 +21,7 @@ __all__ = [
     "LogUniformGrid",
     "VarproOptimizer",
     "BenchmarkRunner",
+    "apply_3d_kernel",
     "apply_1d_kernel_along_axis",
     "_apply_1d_kernel_along_axis",
     "apply_separable_gaussian_3d",

@@ -6,6 +6,7 @@ from src.potential.gaussian_discretization import (
     compare_exp_sum_discretization,
     compute_exp_sum_energy_error,
     compute_grid_energy_reference,
+    compute_rpca_error_sweep,
 )
 
 
@@ -71,3 +72,46 @@ def test_compare_exp_sum_discretization_groups_rows_by_rank():
     assert set(rank_rows) == {1, 2}
     assert [row.N for row in rank_rows[1]] == [5, 7]
     assert [row.rank for row in rank_rows[2]] == [2, 2]
+
+
+def test_compute_rpca_error_sweep_matches_identity_kernel():
+    """恒等1Dカーネルでは3Dポテンシャル誤差が0になる。"""
+    fit = ExponentialSum(weights=np.array([1.0]), alphas=np.array([1.0]))
+    identity = np.eye(1)
+    rpca_1d_list = [
+        {
+            "S_1d": np.zeros((1, 1)),
+            "U_L": identity,
+            "S_L": np.ones(1),
+            "Vt_L": identity,
+            "U_s": identity,
+            "S_s": np.ones(1),
+            "Vt_s": identity,
+        }
+    ]
+    rho_grid = np.ones((1, 1, 1))
+    v_analytic = np.ones((1, 1, 1))
+
+    results = compute_rpca_error_sweep(
+        fit=fit,
+        rpca_1d_list=rpca_1d_list,
+        rho_grid=rho_grid,
+        v_analytic=v_analytic,
+        dx=1.0,
+        k_diag_true=1.0,
+        svd_ranks=[1],
+        thresholds=[1e-3],
+    )
+
+    np.testing.assert_allclose(results["errors_v_svd_only"], [0.0])
+    np.testing.assert_allclose(results["errors_e_svd_only"], [0.0])
+    np.testing.assert_allclose(results["errors_v_rpca"], [0.0])
+    np.testing.assert_allclose(results["errors_e_rpca"], [0.0])
+    np.testing.assert_allclose(
+        results["errors_v_rpca_thresh"]["1e-03"],
+        [0.0],
+    )
+    np.testing.assert_allclose(
+        results["errors_e_rpca_thresh"]["1e-03"],
+        [0.0],
+    )

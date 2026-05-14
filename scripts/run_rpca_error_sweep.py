@@ -20,12 +20,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.approximation.exp_sum.models import ExponentialSum  # noqa: E402
-from src.approximation.exp_sum.separable import (  # noqa: E402
-    apply_1d_kernel_along_axis,
-)
 from src.potential.charge_potential import v_analytic_gaussian  # noqa: E402
+from src.potential.gaussian_discretization import (  # noqa: E402
+    compute_rpca_error_sweep,
+)
 from src.utils.grid import build_xyz  # noqa: E402
-from src.utils.metrics import v_e_errors  # noqa: E402
+from scripts._io import exp_sum_label as make_exp_sum_label  # noqa: E402
+from scripts._io import load_rpca_1d_list  # noqa: E402
+from scripts._io import rpca_label as make_rpca_label  # noqa: E402
 
 
 DEFAULT_THRESHOLDS = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0]
@@ -69,183 +71,6 @@ def _parse_rank_list(value: str) -> list[int]:
     if min(ranks) < 1:
         raise argparse.ArgumentTypeError("all ranks must be positive.")
     return ranks
-
-
-def _exp_sum_label(
-    *,
-    L: float,
-    ranks: list[int],
-    nonneg: bool,
-    max_iter: int,
-    n_points: int,
-    r_min: float,
-    r_max: float,
-) -> str:
-    return (
-        f"L{L:g}_rmin{r_min:.0e}_rmax{r_max:.6g}"
-        f"_n{n_points}_nonneg{int(nonneg)}"
-        f"_iter{max_iter}"
-        f"_R{min(ranks):02d}-{max(ranks):02d}"
-        f"_count{len(ranks)}"
-    )
-
-
-def _rpca_label(
-    *,
-    N: int,
-    L: float,
-    exp_sum_R: int,
-    rpca_rank: int,
-    rpca_max_iter: int,
-    rpca_tol: float,
-) -> str:
-    return (
-        f"N{N}_L{L:g}_R{exp_sum_R:02d}_rank{rpca_rank}"
-        f"_iter{rpca_max_iter}_tol{rpca_tol:.0e}"
-    )
-
-
-def _load_rpca_1d_list(
-    rpca_dir: Path,
-    n_terms: int,
-) -> list[dict[str, np.ndarray]]:
-    rpca_1d_list = []
-    for k in range(n_terms):
-        rpca_1d_list.append(
-            {
-                "S_1d": np.load(rpca_dir / f"k{k:02d}_Ssparse.npy"),
-                "U_L": np.load(rpca_dir / f"k{k:02d}_UL.npy"),
-                "S_L": np.load(rpca_dir / f"k{k:02d}_SL.npy"),
-                "Vt_L": np.load(rpca_dir / f"k{k:02d}_VtL.npy"),
-                "U_s": np.load(rpca_dir / f"k{k:02d}_Us.npy"),
-                "S_s": np.load(rpca_dir / f"k{k:02d}_Ss.npy"),
-                "Vt_s": np.load(rpca_dir / f"k{k:02d}_Vts.npy"),
-            }
-        )
-    return rpca_1d_list
-
-
-def _apply_3d_kernel(
-    kernel_1d: np.ndarray,
-    rho_grid: np.ndarray,
-) -> np.ndarray:
-    result = apply_1d_kernel_along_axis(kernel_1d, rho_grid, axis=0)
-    result = apply_1d_kernel_along_axis(kernel_1d, result, axis=1)
-    result = apply_1d_kernel_along_axis(kernel_1d, result, axis=2)
-    return result
-
-
-def _truncated_svd_kernel(
-    U: np.ndarray,
-    singular_values: np.ndarray,
-    Vt: np.ndarray,
-    rank: int,
-) -> np.ndarray:
-    eff_rank = min(rank, singular_values.shape[0])
-    return (U[:, :eff_rank] * singular_values[:eff_rank]) @ Vt[:eff_rank, :]
-
-
-def compute_rpca_error_sweep(
-    *,
-    fit: ExponentialSum,
-    rpca_1d_list: list[dict[str, np.ndarray]],
-    rho_grid: np.ndarray,
-    v_analytic: np.ndarray,
-    dx: float,
-    k_diag_true: float,
-    svd_ranks: list[int],
-    thresholds: list[float],
-) -> dict[str, np.ndarray | dict[str, np.ndarray]]:
-    """SVD only / RPCA no threshold / RPCA threshold の V, E 誤差を計算する。"""
-    errors_v_svd_only = []
-    errors_e_svd_only = []
-    errors_v_rpca = []
-    errors_e_rpca = []
-    errors_v_rpca_thresh = {thresh: [] for thresh in thresholds}
-    errors_e_rpca_thresh = {thresh: [] for thresh in thresholds}
-
-    diag_coeff = k_diag_true - float(np.sum(fit.weights))
-
-    for rank in svd_ranks:
-        print(f"[rank {rank}] evaluating SVD / RPCA error sweep", flush=True)
-
-        V_svd = np.zeros_like(rho_grid)
-        V_rpca_no_thresh = np.zeros_like(rho_grid)
-        V_rpca_th = {thresh: np.zeros_like(rho_grid) for thresh in thresholds}
-
-        for w_k, k_data in zip(fit.weights, rpca_1d_list):
-            K_svd_1d = _truncated_svd_kernel(
-                k_data["U_s"],
-                k_data["S_s"],
-                k_data["Vt_s"],
-                rank,
-            )
-            V_svd += w_k * _apply_3d_kernel(K_svd_1d, rho_grid)
-
-            L_r_1d = _truncated_svd_kernel(
-                k_data["U_L"],
-                k_data["S_L"],
-                k_data["Vt_L"],
-                rank,
-            )
-            K_rpca_1d = L_r_1d + k_data["S_1d"]
-            V_rpca_no_thresh += w_k * _apply_3d_kernel(K_rpca_1d, rho_grid)
-
-            for thresh in thresholds:
-                S_thresh = np.where(
-                    np.abs(k_data["S_1d"]) > thresh,
-                    k_data["S_1d"],
-                    0.0,
-                )
-                K_rpca_th_1d = L_r_1d + S_thresh
-                V_rpca_th[thresh] += w_k * _apply_3d_kernel(
-                    K_rpca_th_1d,
-                    rho_grid,
-                )
-
-        V_svd_corr = (V_svd + diag_coeff * rho_grid) * dx**3
-        V_rpca_no_corr = (V_rpca_no_thresh + diag_coeff * rho_grid) * dx**3
-
-        err_v_s, err_e_s = v_e_errors(V_svd_corr, v_analytic, rho_grid, dx)
-        errors_v_svd_only.append(err_v_s)
-        errors_e_svd_only.append(err_e_s)
-
-        err_v_rpca_no, err_e_rpca_no = v_e_errors(
-            V_rpca_no_corr,
-            v_analytic,
-            rho_grid,
-            dx,
-        )
-        errors_v_rpca.append(err_v_rpca_no)
-        errors_e_rpca.append(err_e_rpca_no)
-
-        for thresh in thresholds:
-            V_rpca_th_corr = (
-                V_rpca_th[thresh] + diag_coeff * rho_grid
-            ) * dx**3
-            err_v_th, err_e_th = v_e_errors(
-                V_rpca_th_corr,
-                v_analytic,
-                rho_grid,
-                dx,
-            )
-            errors_v_rpca_thresh[thresh].append(err_v_th)
-            errors_e_rpca_thresh[thresh].append(err_e_th)
-
-    return {
-        "errors_v_svd_only": np.asarray(errors_v_svd_only),
-        "errors_e_svd_only": np.asarray(errors_e_svd_only),
-        "errors_v_rpca": np.asarray(errors_v_rpca),
-        "errors_e_rpca": np.asarray(errors_e_rpca),
-        "errors_v_rpca_thresh": {
-            f"{thresh:.0e}": np.asarray(values)
-            for thresh, values in errors_v_rpca_thresh.items()
-        },
-        "errors_e_rpca_thresh": {
-            f"{thresh:.0e}": np.asarray(values)
-            for thresh, values in errors_e_rpca_thresh.items()
-        },
-    }
 
 
 def main() -> None:
@@ -301,7 +126,7 @@ def main() -> None:
     exp_sum_r_max = args.exp_sum_r_max
     if exp_sum_r_max is None:
         exp_sum_r_max = 2 * np.sqrt(3) * args.L
-    exp_sum_label = args.exp_sum_label or _exp_sum_label(
+    exp_sum_label = args.exp_sum_label or make_exp_sum_label(
         L=args.L,
         ranks=args.exp_sum_ranks,
         nonneg=args.exp_sum_nonneg,
@@ -311,7 +136,7 @@ def main() -> None:
         r_max=exp_sum_r_max,
     )
     rpca_rank = args.N // 4 if args.rpca_rank is None else args.rpca_rank
-    rpca_label = args.rpca_label or _rpca_label(
+    rpca_label = args.rpca_label or make_rpca_label(
         N=args.N,
         L=args.L,
         exp_sum_R=args.exp_sum_rank,
@@ -348,7 +173,7 @@ def main() -> None:
     weights = np.load(weights_path)
     alphas = np.load(alphas_path)
     fit = ExponentialSum(weights=weights, alphas=alphas)
-    rpca_1d_list = _load_rpca_1d_list(rpca_dir, n_terms=fit.rank)
+    rpca_1d_list = load_rpca_1d_list(rpca_dir, n_terms=fit.rank)
 
     max_requested_rank = max(args.svd_ranks)
     available_rank = min(

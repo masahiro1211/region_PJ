@@ -26,6 +26,8 @@ from src.potential.separable_density import (  # noqa: E402
 from src.utils.cache import cache_path  # noqa: E402
 from src.utils.cache import load_or_compute  # noqa: E402
 from src.utils.grid import build_xyz  # noqa: E402
+from scripts._io import exp_sum_label as make_exp_sum_label  # noqa: E402
+from scripts._io import rpca_label  # noqa: E402
 
 
 parser = argparse.ArgumentParser(
@@ -55,17 +57,23 @@ exp_sum_max_iter = 200000
 exp_sum_n_points = 2000
 exp_sum_r_min = 1e-2
 exp_sum_r_max = 2 * np.sqrt(3) * L
-exp_sum_label = (
-    f"L{L:g}_rmin{exp_sum_r_min:.0e}_rmax{exp_sum_r_max:.6g}"
-    f"_n{exp_sum_n_points}_nonneg{int(exp_sum_nonneg)}"
-    f"_iter{exp_sum_max_iter}"
-    f"_R{min(exp_sum_ranks):02d}-{max(exp_sum_ranks):02d}"
-    f"_count{len(exp_sum_ranks)}"
+exp_sum_label = make_exp_sum_label(
+    L=L,
+    ranks=exp_sum_ranks,
+    nonneg=exp_sum_nonneg,
+    max_iter=exp_sum_max_iter,
+    n_points=exp_sum_n_points,
+    r_min=exp_sum_r_min,
+    r_max=exp_sum_r_max,
 )
 
-out_label = (
-    f"N{N}_L{L:g}_R{exp_sum_R:02d}_rank{rpca_rank}"
-    f"_iter{rpca_max_iter}_tol{rpca_tol:.0e}"
+out_label = rpca_label(
+    N=N,
+    L=L,
+    exp_sum_R=exp_sum_R,
+    rpca_rank=rpca_rank,
+    rpca_max_iter=rpca_max_iter,
+    rpca_tol=rpca_tol,
 )
 
 

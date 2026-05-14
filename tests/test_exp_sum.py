@@ -1,6 +1,7 @@
 import numpy as np
 
 from src.approximation.exp_sum.separable import (
+    apply_3d_kernel,
     apply_1d_kernel_along_axis,
     apply_separable_gaussian_3d,
 )
@@ -51,5 +52,18 @@ def test_apply_separable_gaussian_3d_matches_three_axis_products():
     expected = apply_1d_kernel_along_axis(kernel, expected, axis=1)
     expected = apply_1d_kernel_along_axis(kernel, expected, axis=2)
     actual = apply_separable_gaussian_3d(alpha, x_axis, rho)
+
+    np.testing.assert_allclose(actual, expected)
+
+
+def test_apply_3d_kernel_matches_three_axis_products():
+    """1Dカーネル適用が3軸の明示的な逐次適用と一致する。"""
+    kernel = np.array([[1.0, 2.0], [3.0, 4.0]])
+    rho = np.arange(8.0).reshape(2, 2, 2)
+
+    expected = apply_1d_kernel_along_axis(kernel, rho, axis=0)
+    expected = apply_1d_kernel_along_axis(kernel, expected, axis=1)
+    expected = apply_1d_kernel_along_axis(kernel, expected, axis=2)
+    actual = apply_3d_kernel(kernel, rho)
 
     np.testing.assert_allclose(actual, expected)

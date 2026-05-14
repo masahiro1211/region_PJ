@@ -7,7 +7,9 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
+from src.approximation.exp_sum.separable import apply_3d_kernel
 from src.approximation.exp_sum.models import ExponentialSum
+from src.approximation.low_rank import reconstruct_svd
 from src.potential.charge_potential import v_analytic_gaussian
 from src.potential.separable_density import (
     apply_exp_sum_to_separable_density,
@@ -15,7 +17,7 @@ from src.potential.separable_density import (
     materialize_density_terms,
 )
 from src.utils.grid import build_xyz
-from src.utils.metrics import hartree_energy
+from src.utils.metrics import hartree_energy, v_e_errors
 
 
 @dataclass(frozen=True)
@@ -248,3 +250,135 @@ def compare_exp_sum_discretization(
             )
 
     return grid_rows, rank_rows
+
+
+def compute_rpca_error_sweep(
+    *,
+    fit: ExponentialSum,
+    rpca_1d_list: list[dict[str, np.ndarray]],
+    rho_grid: np.ndarray,
+    v_analytic: np.ndarray,
+    dx: float,
+    k_diag_true: float,
+    svd_ranks: list[int],
+    thresholds: list[float],
+) -> dict[str, np.ndarray | dict[str, np.ndarray]]:
+    """RPCA / SVD 1D カーネル近似の 3D 誤差を sweep する。
+
+    Parameters
+    ----------
+    fit : ExponentialSum
+        ``1/r`` の指数和近似。
+    rpca_1d_list : list[dict[str, np.ndarray]]
+        各指数和項に対応する 1D カーネル分解。各要素は
+        ``S_1d``, ``U_L``, ``S_L``, ``Vt_L``, ``U_s``, ``S_s``,
+        ``Vt_s`` を持つ。
+    rho_grid : np.ndarray, shape (N, N, N)
+        3D 密度グリッド。
+    v_analytic : np.ndarray, shape (N, N, N)
+        比較対象の解析ポテンシャル。
+    dx : float
+        グリッド幅。
+    k_diag_true : float
+        立方体セル積分に基づく真の対角補正係数。
+    svd_ranks : list[int]
+        評価する SVD / RPCA 低ランク成分の rank。
+    thresholds : list[float]
+        RPCA sparse 成分をしきい値処理する値。
+
+    Returns
+    -------
+    dict[str, np.ndarray | dict[str, np.ndarray]]
+        SVD only、RPCA no threshold、RPCA threshold ごとの
+        ポテンシャル相対誤差と Hartree エネルギー相対誤差。
+    """
+    errors_v_svd_only = []
+    errors_e_svd_only = []
+    errors_v_rpca = []
+    errors_e_rpca = []
+    errors_v_rpca_thresh = {thresh: [] for thresh in thresholds}
+    errors_e_rpca_thresh = {thresh: [] for thresh in thresholds}
+
+    diag_coeff = k_diag_true - float(np.sum(fit.weights))
+
+    for rank in svd_ranks:
+        print(f"[rank {rank}] evaluating SVD / RPCA error sweep", flush=True)
+
+        V_svd = np.zeros_like(rho_grid)
+        V_rpca_no_thresh = np.zeros_like(rho_grid)
+        V_rpca_th = {thresh: np.zeros_like(rho_grid) for thresh in thresholds}
+
+        for w_k, k_data in zip(fit.weights, rpca_1d_list):
+            K_svd_1d = reconstruct_svd(
+                k_data["U_s"][:, :rank],
+                k_data["S_s"][:rank],
+                k_data["Vt_s"][:rank, :],
+            )
+            V_svd += w_k * apply_3d_kernel(K_svd_1d, rho_grid)
+
+            L_r_1d = reconstruct_svd(
+                k_data["U_L"][:, :rank],
+                k_data["S_L"][:rank],
+                k_data["Vt_L"][:rank, :],
+            )
+            K_rpca_1d = L_r_1d + k_data["S_1d"]
+            V_rpca_no_thresh += w_k * apply_3d_kernel(
+                K_rpca_1d,
+                rho_grid,
+            )
+
+            for thresh in thresholds:
+                S_thresh = np.where(
+                    np.abs(k_data["S_1d"]) > thresh,
+                    k_data["S_1d"],
+                    0.0,
+                )
+                K_rpca_th_1d = L_r_1d + S_thresh
+                V_rpca_th[thresh] += w_k * apply_3d_kernel(
+                    K_rpca_th_1d,
+                    rho_grid,
+                )
+
+        V_svd_corr = (V_svd + diag_coeff * rho_grid) * dx**3
+        V_rpca_no_corr = (V_rpca_no_thresh + diag_coeff * rho_grid) * dx**3
+
+        err_v_s, err_e_s = v_e_errors(V_svd_corr, v_analytic, rho_grid, dx)
+        errors_v_svd_only.append(err_v_s)
+        errors_e_svd_only.append(err_e_s)
+
+        err_v_rpca_no, err_e_rpca_no = v_e_errors(
+            V_rpca_no_corr,
+            v_analytic,
+            rho_grid,
+            dx,
+        )
+        errors_v_rpca.append(err_v_rpca_no)
+        errors_e_rpca.append(err_e_rpca_no)
+
+        for thresh in thresholds:
+            V_rpca_th_corr = (
+                V_rpca_th[thresh] + diag_coeff * rho_grid
+            ) * dx**3
+            err_v_th, err_e_th = v_e_errors(
+                V_rpca_th_corr,
+                v_analytic,
+                rho_grid,
+                dx,
+            )
+            errors_v_rpca_thresh[thresh].append(err_v_th)
+            errors_e_rpca_thresh[thresh].append(err_e_th)
+
+    return {
+        "errors_v_svd_only": np.asarray(errors_v_svd_only),
+        "errors_e_svd_only": np.asarray(errors_e_svd_only),
+        "errors_v_rpca": np.asarray(errors_v_rpca),
+        "errors_e_rpca": np.asarray(errors_e_rpca),
+        "errors_v_rpca_thresh": {
+            f"{thresh:.0e}": np.asarray(values)
+            for thresh, values in errors_v_rpca_thresh.items()
+        },
+        "errors_e_rpca_thresh": {
+            f"{thresh:.0e}": np.asarray(values)
+            for thresh, values in errors_e_rpca_thresh.items()
+        },
+    }
