@@ -1,11 +1,9 @@
 from .charge_potential import run_charge_potential_demo
 from .gaussian_discretization import (
     ExpSumEnergyError,
-    GridEnergyReference,
     analytic_gaussian_hartree_energy,
     compare_exp_sum_discretization,
     compute_exp_sum_energy_error,
-    compute_grid_energy_reference,
     compute_rpca_error_sweep,
 )
 from .regularized_coulomb import (
@@ -37,11 +35,9 @@ from .poisson_solver import (
 __all__ = [
     "run_charge_potential_demo",
     "ExpSumEnergyError",
-    "GridEnergyReference",
     "analytic_gaussian_hartree_energy",
     "compare_exp_sum_discretization",
     "compute_exp_sum_energy_error",
-    "compute_grid_energy_reference",
     "compute_rpca_error_sweep",
     "build_regularized_coulomb_kernel_1d",
     "build_regularized_coulomb_kernel_3d",

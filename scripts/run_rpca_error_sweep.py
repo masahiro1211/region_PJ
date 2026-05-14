@@ -121,7 +121,7 @@ def main() -> None:
 
     exp_sum_r_max = args.exp_sum_r_max
     if exp_sum_r_max is None:
-        exp_sum_r_max = 2 * np.sqrt(3) * args.L
+        exp_sum_r_max = np.sqrt(3) * args.L
     exp_sum_label = args.exp_sum_label or make_exp_sum_label(
         L=args.L,
         ranks=args.exp_sum_ranks,

@@ -26,6 +26,36 @@ from src.utils.grid import build_xyz
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _parse_rank_list(value: str) -> list[int]:
+    """`1:30` 形式（両端含む）または comma-separated rank list を読む。"""
+    stripped = value.strip()
+    if ":" in stripped:
+        parts = [part.strip() for part in stripped.split(":")]
+        if len(parts) not in (2, 3):
+            raise argparse.ArgumentTypeError(
+                "rank range must be start:stop or start:stop:step."
+            )
+        start = int(parts[0])
+        stop = int(parts[1])
+        step = int(parts[2]) if len(parts) == 3 else 1
+        if step == 0:
+            raise argparse.ArgumentTypeError(
+                "rank range step must be non-zero."
+            )
+        end = stop + (1 if step > 0 else -1)
+        ranks = list(range(start, end, step))
+    else:
+        ranks = [
+            int(item.strip()) for item in stripped.split(",") if item.strip()
+        ]
+
+    if not ranks:
+        raise argparse.ArgumentTypeError("at least one rank is required.")
+    if min(ranks) < 1:
+        raise argparse.ArgumentTypeError("all ranks must be positive.")
+    return ranks
+
+
 parser = argparse.ArgumentParser(
     description="1D Gaussian カーネル分解結果を .npy に保存する。"
 )
@@ -34,25 +64,43 @@ parser.add_argument(
     action="store_true",
     help="cache miss 時に重い RPCA / SVD 計算を実行する。",
 )
+parser.add_argument("--N", type=int, default=201)
+parser.add_argument("--L", type=float, default=20.0)
+parser.add_argument("--exp-sum-rank", type=int, default=11)
+parser.add_argument("--rpca-rank", type=int, default=None)
+parser.add_argument("--rpca-max-iter", type=int, default=2000)
+parser.add_argument("--rpca-tol", type=float, default=1e-6)
+parser.add_argument(
+    "--exp-sum-ranks",
+    type=_parse_rank_list,
+    default="1:30",
+)
+parser.add_argument(
+    "--exp-sum-nonneg",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+)
+parser.add_argument("--exp-sum-max-iter", type=int, default=200000)
+parser.add_argument("--exp-sum-n-points", type=int, default=2000)
+parser.add_argument("--exp-sum-r-min", type=float, default=1e-2)
+parser.add_argument("--exp-sum-r-max", type=float, default=None)
 args = parser.parse_args()
 
 
-# ---- パラメータ（必要ならここだけ変更する） ----
-N = 201
-L = 20
-exp_sum_R = 11
-rpca_rank = N // 4
-rpca_max_iter = 2000
-rpca_tol = 1e-6
-
-# exp-sum 側の入力ディレクトリを決めるためのパラメータ。
-# run_exp_sum_fitting.py の設定を変えた場合は、ここも合わせる。
-exp_sum_ranks = list(range(1, 31))
-exp_sum_nonneg = True
-exp_sum_max_iter = 200000
-exp_sum_n_points = 2000
-exp_sum_r_min = 1e-2
-exp_sum_r_max = 2 * np.sqrt(3) * L
+N = args.N
+L = args.L
+exp_sum_R = args.exp_sum_rank
+rpca_rank = N // 4 if args.rpca_rank is None else args.rpca_rank
+rpca_max_iter = args.rpca_max_iter
+rpca_tol = args.rpca_tol
+exp_sum_ranks = args.exp_sum_ranks
+exp_sum_nonneg = args.exp_sum_nonneg
+exp_sum_max_iter = args.exp_sum_max_iter
+exp_sum_n_points = args.exp_sum_n_points
+exp_sum_r_min = args.exp_sum_r_min
+exp_sum_r_max = args.exp_sum_r_max
+if exp_sum_r_max is None:
+    exp_sum_r_max = np.sqrt(3) * L
 exp_sum_label = make_exp_sum_label(
     L=L,
     ranks=exp_sum_ranks,

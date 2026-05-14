@@ -10,7 +10,6 @@ import numpy as np
 from src.approximation.exp_sum.separable import apply_3d_kernel
 from src.approximation.exp_sum.models import ExponentialSum
 from src.approximation.low_rank import reconstruct_svd
-from src.potential.charge_potential import v_analytic_gaussian
 from src.potential.separable_density import (
     apply_exp_sum_to_separable_density,
     make_gaussian_density_terms,
@@ -18,34 +17,6 @@ from src.potential.separable_density import (
 )
 from src.utils.grid import build_xyz
 from src.utils.metrics import hartree_energy, v_e_errors
-
-
-@dataclass(frozen=True)
-class GridEnergyReference:
-    """各Nの解析ポテンシャルを使ったグリッド上のエネルギー評価。
-
-    Attributes
-    ----------
-    N : int
-        各軸のグリッド点数。
-    dx : float
-        グリッド幅。
-    energy_grid : float
-        同じグリッド上で解析ポテンシャルを積分したエネルギー。
-    energy_exact : float
-        連続系での解析的な自己エネルギー。
-    abs_error : float
-        ``abs(energy_grid - energy_exact)``。
-    rel_error : float
-        ``abs_error / abs(energy_exact)``。
-    """
-
-    N: int
-    dx: float
-    energy_grid: float
-    energy_exact: float
-    abs_error: float
-    rel_error: float
 
 
 @dataclass(frozen=True)
@@ -62,8 +33,6 @@ class ExpSumEnergyError:
         グリッド幅。
     energy_exp_sum : float
         指数和近似で得たポテンシャルから計算したエネルギー。
-    err_vs_grid_ref : float
-        同じグリッド上の解析ポテンシャル積分に対する相対誤差。
     err_vs_cont_exact : float
         連続系の解析エネルギーに対する相対誤差。
     """
@@ -72,7 +41,6 @@ class ExpSumEnergyError:
     N: int
     dx: float
     energy_exp_sum: float
-    err_vs_grid_ref: float
     err_vs_cont_exact: float
 
 
@@ -97,48 +65,6 @@ def analytic_gaussian_hartree_energy(alpha: float) -> float:
     if alpha <= 0:
         raise ValueError("alpha must be positive.")
     return float(np.pi**2.5 / (np.sqrt(2.0) * alpha**2.5))
-
-
-def compute_grid_energy_reference(
-    N: int,
-    L: float,
-    alpha: float,
-) -> GridEnergyReference:
-    """指定Nで解析ポテンシャルをグリッド積分したエネルギーを計算する。
-
-    Parameters
-    ----------
-    N : int
-        各軸のグリッド点数。``build_xyz`` と同じく奇数を想定する。
-    L : float
-        計算領域の一辺の長さ。
-    alpha : float
-        Gaussian 密度の幅パラメータ。
-
-    Returns
-    -------
-    reference : GridEnergyReference
-        グリッド上のエネルギーと連続系解析値との差分をまとめた結果。
-    """
-    dx = L / N
-    xyz = build_xyz(N, L)
-    radius = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2 + xyz[2] ** 2)
-    rho = np.exp(-alpha * radius**2)
-    # 解析ポテンシャルは、厳密解を使用してはいけないのでは？
-    potential_exact = v_analytic_gaussian(radius, alpha)
-    energy_grid = hartree_energy(rho, potential_exact, dx)
-    energy_exact = analytic_gaussian_hartree_energy(alpha)
-    abs_error = abs(energy_grid - energy_exact)
-    rel_error = abs_error / abs(energy_exact)
-
-    return GridEnergyReference(
-        N=N,
-        dx=dx,
-        energy_grid=energy_grid,
-        energy_exact=energy_exact,
-        abs_error=abs_error,
-        rel_error=rel_error,
-    )
 
 
 def compute_exp_sum_energy_error(
@@ -173,7 +99,7 @@ def compute_exp_sum_energy_error(
     x_axis = xyz[0, :, 0, 0]
     density_terms = make_gaussian_density_terms(x_axis, alpha)
     rho = materialize_density_terms(density_terms)
-    reference = compute_grid_energy_reference(N=N, L=L, alpha=alpha)
+    energy_exact = analytic_gaussian_hartree_energy(alpha)
     diag_coeff = cell_int_const / dx - float(np.sum(fit.weights))
     potential = apply_exp_sum_to_separable_density(
         fit=fit,
@@ -189,10 +115,8 @@ def compute_exp_sum_energy_error(
         N=N,
         dx=dx,
         energy_exp_sum=energy_exp_sum,
-        err_vs_grid_ref=abs(energy_exp_sum - reference.energy_grid)
-        / abs(reference.energy_grid),
-        err_vs_cont_exact=abs(energy_exp_sum - reference.energy_exact)
-        / abs(reference.energy_exact),
+        err_vs_cont_exact=abs(energy_exp_sum - energy_exact)
+        / abs(energy_exact),
     )
 
 
@@ -203,7 +127,7 @@ def compare_exp_sum_discretization(
     fits: Mapping[int, ExponentialSum],
     ranks: Sequence[int],
     cell_int_const: float = 2.38,
-) -> tuple[list[GridEnergyReference], dict[int, list[ExpSumEnergyError]]]:
+) -> dict[int, list[ExpSumEnergyError]]:
     """複数Nで離散化誤差と指数和近似誤差を比較する。
 
     Parameters
@@ -223,15 +147,9 @@ def compare_exp_sum_discretization(
 
     Returns
     -------
-    grid_rows : list[GridEnergyReference]
-        各Nの純粋なグリッド積分誤差。
     rank_rows : dict[int, list[ExpSumEnergyError]]
         rank ごとの指数和近似エネルギー誤差。
     """
-    grid_rows = [
-        compute_grid_energy_reference(N=N, L=L, alpha=alpha)
-        for N in N_values
-    ]
     rank_rows: dict[int, list[ExpSumEnergyError]] = {
         rank: [] for rank in ranks
     }
@@ -249,7 +167,7 @@ def compare_exp_sum_discretization(
                 )
             )
 
-    return grid_rows, rank_rows
+    return rank_rows
 
 
 def compute_rpca_error_sweep(

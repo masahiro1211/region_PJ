@@ -23,6 +23,36 @@ from src.utils.cache import load_or_compute
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _parse_rank_list(value: str) -> list[int]:
+    """`1:30` 形式（両端含む）または comma-separated rank list を読む。"""
+    stripped = value.strip()
+    if ":" in stripped:
+        parts = [part.strip() for part in stripped.split(":")]
+        if len(parts) not in (2, 3):
+            raise argparse.ArgumentTypeError(
+                "rank range must be start:stop or start:stop:step."
+            )
+        start = int(parts[0])
+        stop = int(parts[1])
+        step = int(parts[2]) if len(parts) == 3 else 1
+        if step == 0:
+            raise argparse.ArgumentTypeError(
+                "rank range step must be non-zero."
+            )
+        end = stop + (1 if step > 0 else -1)
+        ranks = list(range(start, end, step))
+    else:
+        ranks = [
+            int(item.strip()) for item in stripped.split(",") if item.strip()
+        ]
+
+    if not ranks:
+        raise argparse.ArgumentTypeError("at least one rank is required.")
+    if min(ranks) < 1:
+        raise argparse.ArgumentTypeError("all ranks must be positive.")
+    return ranks
+
+
 parser = argparse.ArgumentParser(
     description="指数和フィッティング結果を .npy に保存する。"
 )
@@ -31,17 +61,27 @@ parser.add_argument(
     action="store_true",
     help="cache miss 時に重い VARPRO 計算を実行する。",
 )
+parser.add_argument("--L", type=float, default=20.0)
+parser.add_argument("--ranks", type=_parse_rank_list, default="1:30")
+parser.add_argument(
+    "--nonneg",
+    action=argparse.BooleanOptionalAction,
+    default=True,
+)
+parser.add_argument("--max-iter", type=int, default=200000)
+parser.add_argument("--n-points", type=int, default=2000)
+parser.add_argument("--r-min", type=float, default=1e-2)
+parser.add_argument("--r-max", type=float, default=None)
 args = parser.parse_args()
 
 
-# ---- パラメータ（必要ならここだけ変更する） ----
-L = 20
-ranks = list(range(1, 31))
-nonneg = True
-max_iter = 200000
-n_points = 2000
-r_min = 1e-2
-r_max = 2 * np.sqrt(3) * L
+L = args.L
+ranks = args.ranks
+nonneg = args.nonneg
+max_iter = args.max_iter
+n_points = args.n_points
+r_min = args.r_min
+r_max = np.sqrt(3) * L if args.r_max is None else args.r_max
 
 out_label = exp_sum_label(
     L=L,
