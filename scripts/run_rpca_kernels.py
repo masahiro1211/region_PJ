@@ -1,0 +1,205 @@
+"""1D Gaussian カーネルの RPCA / SVD 分解を実行し、.npy に保存する。
+
+ノートブックの 3D ポテンシャル誤差ループには入らず、その前段で必要な
+1D カーネルと分解済み行列だけを作る。既存の pkl キャッシュがあれば
+再計算せず、キャッシュ内容を numpy 配列として書き出す。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.decomposition.rpca import randomized_rpca  # noqa: E402
+from src.potential.separable_density import (  # noqa: E402
+    build_gaussian_kernel_1d,
+)
+from src.utils.cache import cache_path  # noqa: E402
+from src.utils.cache import load_or_compute  # noqa: E402
+from src.utils.grid import build_xyz  # noqa: E402
+
+
+parser = argparse.ArgumentParser(
+    description="1D Gaussian カーネル分解結果を .npy に保存する。"
+)
+parser.add_argument(
+    "--compute",
+    action="store_true",
+    help="cache miss 時に重い RPCA / SVD 計算を実行する。",
+)
+args = parser.parse_args()
+
+
+# ---- パラメータ（必要ならここだけ変更する） ----
+N = 201
+L = 20
+exp_sum_R = 11
+rpca_rank = N // 4
+rpca_max_iter = 2000
+rpca_tol = 1e-6
+
+# exp-sum 側の入力ディレクトリを決めるためのパラメータ。
+# run_exp_sum_fitting.py の設定を変えた場合は、ここも合わせる。
+exp_sum_ranks = list(range(1, 31))
+exp_sum_nonneg = True
+exp_sum_max_iter = 200000
+exp_sum_n_points = 2000
+exp_sum_r_min = 1e-2
+exp_sum_r_max = 2 * np.sqrt(3) * L
+exp_sum_label = (
+    f"L{L:g}_rmin{exp_sum_r_min:.0e}_rmax{exp_sum_r_max:.6g}"
+    f"_n{exp_sum_n_points}_nonneg{int(exp_sum_nonneg)}"
+    f"_iter{exp_sum_max_iter}"
+    f"_R{min(exp_sum_ranks):02d}-{max(exp_sum_ranks):02d}"
+    f"_count{len(exp_sum_ranks)}"
+)
+
+out_label = (
+    f"N{N}_L{L:g}_R{exp_sum_R:02d}_rank{rpca_rank}"
+    f"_iter{rpca_max_iter}_tol{rpca_tol:.0e}"
+)
+
+
+# ---- exp-sum フィットを .npy から読み込む ----
+exp_sum_dir = PROJECT_ROOT / "data" / "npy" / "exp_sum" / exp_sum_label
+weights_path = exp_sum_dir / f"R{exp_sum_R:02d}_weights.npy"
+alphas_path = exp_sum_dir / f"R{exp_sum_R:02d}_alphas.npy"
+if not weights_path.exists() or not alphas_path.exists():
+    raise FileNotFoundError(
+        "exp-sum の .npy ファイルが見つかりません。先に "
+        "`python scripts/run_exp_sum_fitting.py` を実行してください。"
+    )
+
+weights = np.load(weights_path)
+alphas = np.load(alphas_path)
+x_axis = build_xyz(N, L)[0, :, 0, 0]
+
+
+def _compute_kernels():
+    """load_or_compute に渡す、1D カーネル分解のローカル計算本体。"""
+    K_1d_list_local = []
+    RPCA_1d_list_local = []
+
+    for k, alpha_k in enumerate(alphas):
+        print(f"[{k + 1}/{len(alphas)}] factoring 1D Gaussian kernel")
+
+        K_1D = build_gaussian_kernel_1d(float(alpha_k), x_axis)
+        K_1d_list_local.append(K_1D)
+
+        L_1d, S_1d = randomized_rpca(
+            K_1D,
+            rank=rpca_rank,
+            max_iter=rpca_max_iter,
+            tol=rpca_tol,
+        )
+        U_L, S_L, Vt_L = np.linalg.svd(L_1d)
+        U_s, S_s, Vt_s = np.linalg.svd(K_1D)
+
+        RPCA_1d_list_local.append(
+            {
+                "S_1d": S_1d,
+                "U_L": U_L,
+                "S_L": S_L,
+                "Vt_L": Vt_L,
+                "U_s": U_s,
+                "S_s": S_s,
+                "Vt_s": Vt_s,
+            }
+        )
+
+    return {"K_1d_list": K_1d_list_local, "RPCA_1d_list": RPCA_1d_list_local}
+
+
+# ---- RPCA / SVD 分解（既存の pkl キャッシュを利用） ----
+kernels_cache_params = {
+    "N": N,
+    "L": L,
+    "exp_sum_R": exp_sum_R,
+    "alphas": np.asarray(alphas, dtype=np.float64),
+    "rpca_rank": rpca_rank,
+    "rpca_max_iter": rpca_max_iter,
+    "rpca_tol": rpca_tol,
+}
+
+kernels_cache_path = cache_path("rpca_svd_1d_kernels", kernels_cache_params)
+if not kernels_cache_path.exists() and not args.compute:
+    raise FileNotFoundError(
+        "rpca_svd_1d_kernels の cache が見つかりません。"
+        "この PC で重い計算を避けるため停止します。"
+        "計算用 PC / Slurm では `--compute` を付けて実行してください: "
+        "`python scripts/run_rpca_kernels.py --compute`"
+    )
+
+kernels_data = load_or_compute(
+    namespace="rpca_svd_1d_kernels",
+    params=kernels_cache_params,
+    compute=_compute_kernels,
+)
+K_1d_list = kernels_data["K_1d_list"]
+RPCA_1d_list = kernels_data["RPCA_1d_list"]
+
+if len(K_1d_list) != len(weights) or len(RPCA_1d_list) != len(weights):
+    raise ValueError(
+        "キャッシュされた RPCA データの個数が exp-sum の項数と一致しません: "
+        f"len(K_1d_list)={len(K_1d_list)}, "
+        f"len(RPCA_1d_list)={len(RPCA_1d_list)}, len(weights)={len(weights)}."
+    )
+
+# ---- notebook / 他スクリプトから np.load しやすい形式で保存 ----
+out_dir = (
+    PROJECT_ROOT
+    / "data"
+    / "npy"
+    / "rpca_kernels"
+    / exp_sum_label
+    / out_label
+)
+out_dir.mkdir(parents=True, exist_ok=True)
+for k, (K1d, rpca) in enumerate(zip(K_1d_list, RPCA_1d_list)):
+    np.save(out_dir / f"k{k:02d}_K1d.npy", K1d)
+    np.save(out_dir / f"k{k:02d}_UL.npy", rpca["U_L"])
+    np.save(out_dir / f"k{k:02d}_SL.npy", rpca["S_L"])
+    np.save(out_dir / f"k{k:02d}_VtL.npy", rpca["Vt_L"])
+    np.save(out_dir / f"k{k:02d}_Ssparse.npy", rpca["S_1d"])
+    np.save(out_dir / f"k{k:02d}_Us.npy", rpca["U_s"])
+    np.save(out_dir / f"k{k:02d}_Ss.npy", rpca["S_s"])
+    np.save(out_dir / f"k{k:02d}_Vts.npy", rpca["Vt_s"])
+
+params_json = {
+    "N": N,
+    "L": L,
+    "out_label": out_label,
+    "output_dir": str(out_dir.relative_to(PROJECT_ROOT)),
+    "exp_sum_R": exp_sum_R,
+    "exp_sum_label": exp_sum_label,
+    "rpca_rank": rpca_rank,
+    "rpca_max_iter": rpca_max_iter,
+    "rpca_tol": rpca_tol,
+    "exp_sum_dir": str(exp_sum_dir.relative_to(PROJECT_ROOT)),
+    "alphas": alphas.tolist(),
+    "weights": weights.tolist(),
+    "cache_namespace": "rpca_svd_1d_kernels",
+    "cache_params": {
+        "N": N,
+        "L": L,
+        "exp_sum_R": exp_sum_R,
+        "alphas": alphas.tolist(),
+        "rpca_rank": rpca_rank,
+        "rpca_max_iter": rpca_max_iter,
+        "rpca_tol": rpca_tol,
+    },
+}
+with open(out_dir / "params.json", "w", encoding="utf-8") as fp:
+    json.dump(params_json, fp, ensure_ascii=False, indent=2)
+
+print(f"Saved {8 * len(K_1d_list)} files -> {out_dir}")
+print(f"Saved params -> {out_dir / 'params.json'}")

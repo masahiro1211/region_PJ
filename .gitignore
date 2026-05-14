@@ -19,6 +19,7 @@ notebooks/.ipynb_checkpoints/
 # データ・結果（大容量ファイルは管理外）
 data/raw/*
 data/processed/*
+data/npy/*
 results/figures/*
 results/logs/*
 !data/raw/.gitkeep
