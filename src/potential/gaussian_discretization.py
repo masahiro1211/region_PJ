@@ -122,6 +122,7 @@ def compute_grid_energy_reference(
     xyz = build_xyz(N, L)
     radius = np.sqrt(xyz[0] ** 2 + xyz[1] ** 2 + xyz[2] ** 2)
     rho = np.exp(-alpha * radius**2)
+    # 解析ポテンシャルは、厳密解を使用してはいけないのでは？
     potential_exact = v_analytic_gaussian(radius, alpha)
     energy_grid = hartree_energy(rho, potential_exact, dx)
     energy_exact = analytic_gaussian_hartree_energy(alpha)
