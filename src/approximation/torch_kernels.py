@@ -179,7 +179,7 @@ def apply_exp_sum_3d_full(
         tmp = apply_dense_axis(K, rho, axis=0)
         tmp = apply_dense_axis(K, tmp, axis=1)
         tmp = apply_dense_axis(K, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     return out
 
 
@@ -216,7 +216,7 @@ def apply_exp_sum_3d_lowrank_naive(
         tmp = apply_dense_axis(K_r, rho, axis=0)
         tmp = apply_dense_axis(K_r, tmp, axis=1)
         tmp = apply_dense_axis(K_r, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     return out
 
 
@@ -247,7 +247,7 @@ def apply_exp_sum_3d_lowrank(
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     return out
 
 
@@ -329,12 +329,12 @@ def apply_exp_sum_3d_rpca_l_only(
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     for w_k, U_r, s_r, Vt_r, _ in dense_list:
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     return out
 
 
@@ -366,7 +366,7 @@ def apply_exp_sum_3d_rpca_s_only(
         tmp = apply_dense_axis(S_dense, rho, axis=0)
         tmp = apply_dense_axis(S_dense, tmp, axis=1)
         tmp = apply_dense_axis(S_dense, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     return out
 
 

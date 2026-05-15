@@ -49,7 +49,7 @@ def apply_cp_rho_V(
             vx = K_k @ fx
             vy = K_k @ fy
             vz = K_k @ fz
-            V = V + (w_k * c_m) * _torch.einsum('i,j,k->ijk', vx, vy, vz)
+            V.add_(_torch.einsum('i,j,k->ijk', vx, vy, vz), alpha=float(w_k * c_m))
     return V
 
 
@@ -132,13 +132,13 @@ def apply_cp_rho_V_rpca(
             vx = U_L @ (s_L * (Vt_L @ fx))
             vy = U_L @ (s_L * (Vt_L @ fy))
             vz = U_L @ (s_L * (Vt_L @ fz))
-            V = V + (w_k * c_m) * _torch.einsum('i,j,k->ijk', vx, vy, vz)
+            V.add_(_torch.einsum('i,j,k->ijk', vx, vy, vz), alpha=float(w_k * c_m))
     for w_k, U_L, s_L, Vt_L, S_dense in dense_list:
         for c_m, fx, fy, fz in rho_terms_pt:
             vx = U_L @ (s_L * (Vt_L @ fx)) + S_dense @ fx
             vy = U_L @ (s_L * (Vt_L @ fy)) + S_dense @ fy
             vz = U_L @ (s_L * (Vt_L @ fz)) + S_dense @ fz
-            V = V + (w_k * c_m) * _torch.einsum('i,j,k->ijk', vx, vy, vz)
+            V.add_(_torch.einsum('i,j,k->ijk', vx, vy, vz), alpha=float(w_k * c_m))
     return V
 
 

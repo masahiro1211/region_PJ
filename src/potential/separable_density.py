@@ -219,9 +219,13 @@ def apply_exp_sum_to_separable_density(
             gx = kernel @ term.fx
             gy = kernel @ term.fy
             gz = kernel @ term.fz
-            potential += weight * term.coefficient * outer3(gx, gy, gz)
+            tmp = outer3(gx, gy, gz)
+            tmp *= weight * term.coefficient
+            potential += tmp
 
     if diag_coeff != 0.0:
-        potential += diag_coeff * materialize_density_terms(density_terms)
+        rho = materialize_density_terms(density_terms)
+        rho *= diag_coeff
+        potential += rho
 
     return potential * dx**3
