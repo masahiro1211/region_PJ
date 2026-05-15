@@ -5,7 +5,7 @@
 # - exp_sum_r_max = sqrt(3) * L
 # - rpca_rank = N // 4
 
-EXP_N=201
+EXP_N=151
 EXP_L=20.0
 EXP_DENSITY_ALPHA=1.0
 EXP_CELL_INT_CONST=2.38

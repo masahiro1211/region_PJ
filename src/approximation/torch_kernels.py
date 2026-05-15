@@ -282,21 +282,18 @@ def apply_exp_sum_3d_rpca(
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
         tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
-        out = out + w_k * tmp
+        out.add_(tmp, alpha=w_k)
     for w_k, U_r, s_r, Vt_r, S_dense in dense_list:
-        tmp = (
-            apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
-            + apply_dense_axis(S_dense, rho, axis=0)
-        )
-        tmp = (
-            apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
-            + apply_dense_axis(S_dense, tmp, axis=1)
-        )
-        tmp = (
-            apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
-            + apply_dense_axis(S_dense, tmp, axis=2)
-        )
-        out = out + w_k * tmp
+        # in-place add で中間テンソルの余分な確保を避ける。
+        # apply_low_rank_axis は入力を変更しないので inp は各軸の入力として安全に再利用できる。
+        inp = rho
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, inp, axis=0)
+        tmp.add_(apply_dense_axis(S_dense, inp, axis=0))
+        for axis in (1, 2):
+            inp = tmp
+            tmp = apply_low_rank_axis(U_r, s_r, Vt_r, inp, axis=axis)
+            tmp.add_(apply_dense_axis(S_dense, inp, axis=axis))
+        out.add_(tmp, alpha=w_k)
     return out
 
 
