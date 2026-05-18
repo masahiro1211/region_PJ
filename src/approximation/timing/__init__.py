@@ -16,11 +16,13 @@ from src.approximation.timing.targets import iter_timing_targets
 from src.approximation.timing.types import TimingBenchmarkInputs
 from src.approximation.timing.types import TimingTarget
 from src.approximation.timing.types import TorchMetadata
+from src.approximation.timing.types import timing_sweep_label
 
 __all__ = [
     "TimingBenchmarkInputs",
     "TimingTarget",
     "TorchMetadata",
+    "timing_sweep_label",
     "benchmark",
     "get_torch_metadata",
     "iter_timing_targets",

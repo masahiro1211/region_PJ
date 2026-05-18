@@ -22,32 +22,40 @@ from src.approximation.timing import load_k_1d_list  # noqa: E402
 from src.approximation.timing import (  # noqa: E402
     prepare_timing_benchmark_inputs,
 )
+from src.approximation.timing import timing_sweep_label  # noqa: E402
 from src.approximation.timing import with_cuda_sync  # noqa: E402
+from src.experiment_config import density_alpha as _cfg_density_alpha  # noqa: E402
+from src.experiment_config import exp_sum_max_iter as _cfg_exp_sum_max_iter  # noqa: E402
+from src.experiment_config import exp_sum_n_points as _cfg_exp_sum_n_points  # noqa: E402
+from src.experiment_config import exp_sum_nonneg as _cfg_exp_sum_nonneg  # noqa: E402
+from src.experiment_config import exp_sum_r_min as _cfg_exp_sum_r_min  # noqa: E402
+from src.experiment_config import exp_sum_rank as _cfg_exp_sum_rank  # noqa: E402
+from src.experiment_config import exp_sum_ranks as _cfg_exp_sum_ranks  # noqa: E402
+from src.experiment_config import L as _cfg_L  # noqa: E402
+from src.experiment_config import N as _cfg_N  # noqa: E402
+from src.experiment_config import rpca_max_iter as _cfg_rpca_max_iter  # noqa: E402
+from src.experiment_config import rpca_tol as _cfg_rpca_tol  # noqa: E402
+from src.experiment_config import timing_n_inner as _cfg_timing_n_inner  # noqa: E402
+from src.experiment_config import timing_n_repeat as _cfg_timing_n_repeat  # noqa: E402
+from src.experiment_config import timing_n_warmup as _cfg_timing_n_warmup  # noqa: E402
+from src.experiment_config import timing_r_bench as _cfg_timing_r_bench  # noqa: E402
+from src.experiment_config import timing_tau_bench as _cfg_timing_tau_bench  # noqa: E402
 from src.utils.cache import exp_sum_label as make_exp_sum_label  # noqa: E402
 from src.utils.cache import load_rpca_1d_list  # noqa: E402
 from src.utils.cache import rpca_label as make_rpca_label  # noqa: E402
 
 
-DEFAULT_EXP_SUM_RANKS = list(range(1, 31))
-DEFAULT_EXP_SUM_NONNEG = True
-DEFAULT_EXP_SUM_MAX_ITER = 200000
-DEFAULT_EXP_SUM_N_POINTS = 2000
-DEFAULT_EXP_SUM_R_MIN = 1e-2
-DEFAULT_RPCA_MAX_ITER = 2000
-DEFAULT_RPCA_TOL = 1e-6
-
-
 def _parse_args() -> argparse.Namespace:
-    """コマンドライン引数を読む。"""
+    """コマンドライン引数を読む。デフォルト値は experiment_config.sh から取得。"""
     parser = argparse.ArgumentParser(
         description="PyTorch 実装の時間計測値を repeat ごとに .npy 保存する。"
     )
-    parser.add_argument("--N", type=int, default=201)
-    parser.add_argument("--L", type=float, default=20.0)
-    parser.add_argument("--density-alpha", type=float, default=1.0)
-    parser.add_argument("--exp-sum-rank", type=int, default=11)
-    parser.add_argument("--r-bench", type=int, default=15)
-    parser.add_argument("--tau-bench", type=float, default=1e-2)
+    parser.add_argument("--N", type=int, default=_cfg_N())
+    parser.add_argument("--L", type=float, default=_cfg_L())
+    parser.add_argument("--density-alpha", type=float, default=_cfg_density_alpha())
+    parser.add_argument("--exp-sum-rank", type=int, default=_cfg_exp_sum_rank())
+    parser.add_argument("--r-bench", type=int, default=_cfg_timing_r_bench())
+    parser.add_argument("--tau-bench", type=float, default=_cfg_timing_tau_bench())
     parser.add_argument(
         "--exp-sum-label",
         default=None,
@@ -58,9 +66,9 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="既存の rpca_kernels 出力ディレクトリ名を明示する場合に指定。",
     )
-    parser.add_argument("--n-warmup", type=int, default=5)
-    parser.add_argument("--n-inner", type=int, default=10)
-    parser.add_argument("--n-repeat", type=int, default=20)
+    parser.add_argument("--n-warmup", type=int, default=_cfg_timing_n_warmup())
+    parser.add_argument("--n-inner", type=int, default=_cfg_timing_n_inner())
+    parser.add_argument("--n-repeat", type=int, default=_cfg_timing_n_repeat())
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -72,15 +80,14 @@ def _parse_args() -> argparse.Namespace:
 
 def _make_exp_sum_label(args: argparse.Namespace) -> str:
     """既定設定から exp-sum の保存ラベルを作る。"""
-    r_max = np.sqrt(3) * args.L
     return make_exp_sum_label(
         L=args.L,
-        ranks=DEFAULT_EXP_SUM_RANKS,
-        nonneg=DEFAULT_EXP_SUM_NONNEG,
-        max_iter=DEFAULT_EXP_SUM_MAX_ITER,
-        n_points=DEFAULT_EXP_SUM_N_POINTS,
-        r_min=DEFAULT_EXP_SUM_R_MIN,
-        r_max=r_max,
+        ranks=_cfg_exp_sum_ranks(),
+        nonneg=_cfg_exp_sum_nonneg(),
+        max_iter=_cfg_exp_sum_max_iter(),
+        n_points=_cfg_exp_sum_n_points(),
+        r_min=_cfg_exp_sum_r_min(),
+        r_max=np.sqrt(3) * args.L,
     )
 
 
@@ -91,19 +98,23 @@ def _make_rpca_label(args: argparse.Namespace) -> str:
         L=args.L,
         exp_sum_R=args.exp_sum_rank,
         rpca_rank=args.N // 4,
-        rpca_max_iter=DEFAULT_RPCA_MAX_ITER,
-        rpca_tol=DEFAULT_RPCA_TOL,
+        rpca_max_iter=_cfg_rpca_max_iter(),
+        rpca_tol=_cfg_rpca_tol(),
     )
 
 
 def _sweep_label(args: argparse.Namespace) -> str:
     """タイミング計測条件を表す保存ラベルを作る。"""
-    return (
-        f"N{args.N}_L{args.L:g}_alpha{args.density_alpha:g}"
-        f"_R{args.exp_sum_rank:02d}_r{args.r_bench:02d}"
-        f"_tau{args.tau_bench:.0e}"
-        f"_warm{args.n_warmup}_inner{args.n_inner}"
-        f"_repeat{args.n_repeat}"
+    return timing_sweep_label(
+        n_grid=args.N,
+        length=args.L,
+        density_alpha=args.density_alpha,
+        exp_sum_rank=args.exp_sum_rank,
+        r_bench=args.r_bench,
+        tau_bench=args.tau_bench,
+        n_warmup=args.n_warmup,
+        n_inner=args.n_inner,
+        n_repeat=args.n_repeat,
     )
 
 
@@ -217,17 +228,17 @@ def main() -> None:
         "rpca_dense_count": inputs.rpca_dense_count,
         "rpca_lowrank_only_count": inputs.rpca_lowrank_only_count,
         "exp_sum_label_defaults": {
-            "ranks": DEFAULT_EXP_SUM_RANKS,
-            "nonneg": DEFAULT_EXP_SUM_NONNEG,
-            "max_iter": DEFAULT_EXP_SUM_MAX_ITER,
-            "n_points": DEFAULT_EXP_SUM_N_POINTS,
-            "r_min": DEFAULT_EXP_SUM_R_MIN,
+            "ranks": _cfg_exp_sum_ranks(),
+            "nonneg": _cfg_exp_sum_nonneg(),
+            "max_iter": _cfg_exp_sum_max_iter(),
+            "n_points": _cfg_exp_sum_n_points(),
+            "r_min": _cfg_exp_sum_r_min(),
             "r_max": np.sqrt(3) * args.L,
         },
         "rpca_label_defaults": {
             "rpca_rank": args.N // 4,
-            "rpca_max_iter": DEFAULT_RPCA_MAX_ITER,
-            "rpca_tol": DEFAULT_RPCA_TOL,
+            "rpca_max_iter": _cfg_rpca_max_iter(),
+            "rpca_tol": _cfg_rpca_tol(),
         },
         "torch": get_torch_metadata(),
         "timing_files": {

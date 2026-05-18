@@ -69,3 +69,51 @@ class TorchMetadata(TypedDict):
     version: str
     cuda_available: bool
     cuda_device_count: int
+
+
+def timing_sweep_label(
+    n_grid: int,
+    length: float,
+    density_alpha: float,
+    exp_sum_rank: int,
+    r_bench: int,
+    tau_bench: float,
+    n_warmup: int,
+    n_inner: int,
+    n_repeat: int,
+) -> str:
+    """タイミング計測条件を一意に表すディレクトリ名を返す。
+
+    Parameters
+    ----------
+    n_grid : int
+        グリッド点数 N。
+    length : float
+        ボックス長 L。
+    density_alpha : float
+        密度ガウシアンの指数係数 α。
+    exp_sum_rank : int
+        使用する指数和のランク R。
+    r_bench : int
+        SVD/RPCA のランク r。
+    tau_bench : float
+        RPCA の S 閾値 τ。
+    n_warmup : int
+        ウォームアップ回数。
+    n_inner : int
+        内側ループ回数。
+    n_repeat : int
+        繰り返し回数。
+
+    Returns
+    -------
+    label : str
+        ``run_timing_benchmark.py`` が出力ディレクトリ名に使うラベルと同一の文字列。
+    """
+    return (
+        f"N{n_grid}_L{length:g}_alpha{density_alpha:g}"
+        f"_R{exp_sum_rank:02d}_r{r_bench:02d}"
+        f"_tau{tau_bench:.0e}"
+        f"_warm{n_warmup}_inner{n_inner}"
+        f"_repeat{n_repeat}"
+    )
