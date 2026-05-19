@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from .models import ExponentialSum
-
 
 def apply_1d_kernel_along_axis(
     kernel: np.ndarray,
@@ -47,16 +45,3 @@ def apply_separable_gaussian_3d(
     diff = x_axis[:, None] - x_axis[None, :]
     K_1d = np.exp(-alpha * diff**2)
     return apply_3d_kernel(K_1d, rho)
-
-
-def apply_exp_sum_potential_3d(
-    fit: ExponentialSum,
-    x_axis: np.ndarray,
-    rho: np.ndarray,
-    dx: float,
-) -> np.ndarray:
-    """指数和近似 K(r) ≈ Σ_k w_k exp(-α_k r²) で V = (K * ρ) dx³ を計算する."""
-    V = np.zeros_like(rho)
-    for w_k, alpha_k in zip(fit.weights, fit.alphas):
-        V += w_k * apply_separable_gaussian_3d(alpha_k, x_axis, rho)
-    return V * dx**3

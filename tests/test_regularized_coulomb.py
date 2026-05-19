@@ -21,7 +21,10 @@ def test_regularized_coulomb_1d_is_symmetric_with_expected_diagonal():
     kernel = build_regularized_coulomb_kernel_1d(coords, eps)
 
     np.testing.assert_allclose(kernel, kernel.T)
-    np.testing.assert_allclose(np.diag(kernel), np.full(coords.size, 1.0 / eps))
+    np.testing.assert_allclose(
+        np.diag(kernel),
+        np.full(coords.size, 1.0 / eps),
+    )
 
 
 def test_gaussian_density_1d_matches_formula():

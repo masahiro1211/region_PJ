@@ -119,26 +119,6 @@ def make_gaussian_density_terms(
     return terms
 
 
-def outer3(fx: np.ndarray, fy: np.ndarray, fz: np.ndarray) -> np.ndarray:
-    """3本の1Dベクトルから3D外積テンソルを構築する。
-
-    Parameters
-    ----------
-    fx : np.ndarray, shape (N,)
-        x 方向の1Dベクトル。
-    fy : np.ndarray, shape (N,)
-        y 方向の1Dベクトル。
-    fz : np.ndarray, shape (N,)
-        z 方向の1Dベクトル。
-
-    Returns
-    -------
-    tensor : np.ndarray, shape (N, N, N)
-        ``fx[:, None, None] * fy[None, :, None] * fz[None, None, :]``。
-    """
-    return fx[:, None, None] * fy[None, :, None] * fz[None, None, :]
-
-
 def materialize_density_terms(
     terms: Sequence[SeparableDensityTerm],
 ) -> np.ndarray:
@@ -165,7 +145,11 @@ def materialize_density_terms(
     n = len(terms[0].fx)
     rho = np.zeros((n, n, n), dtype=float)
     for term in terms:
-        rho += (term.coefficient * term.fx)[:, None, None] * term.fy[None, :, None] * term.fz[None, None, :]
+        rho += (
+            (term.coefficient * term.fx)[:, None, None]
+            * term.fy[None, :, None]
+            * term.fz[None, None, :]
+        )
     return rho
 
 
@@ -200,7 +184,11 @@ def materialize_potential_terms(
     n = len(terms[0].vx)
     potential = np.zeros((n, n, n), dtype=float)
     for term in terms:
-        potential += (term.coefficient * term.vx)[:, None, None] * term.vy[None, :, None] * term.vz[None, None, :]
+        potential += (
+            (term.coefficient * term.vx)[:, None, None]
+            * term.vy[None, :, None]
+            * term.vz[None, None, :]
+        )
     return potential * dx**3
 
 

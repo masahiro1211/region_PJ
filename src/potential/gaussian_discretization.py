@@ -15,6 +15,7 @@ from src.potential.separable_density import (
     make_gaussian_density_terms,
     materialize_density_terms,
 )
+from src.utils.cache import Rpca1dComponents
 from src.utils.grid import build_xyz
 from src.utils.metrics import hartree_energy, v_e_errors
 
@@ -173,7 +174,7 @@ def compare_exp_sum_discretization(
 def compute_rpca_error_sweep(
     *,
     fit: ExponentialSum,
-    rpca_1d_list: list[dict[str, np.ndarray]],
+    rpca_1d_list: list[Rpca1dComponents],
     rho_grid: np.ndarray,
     v_analytic: np.ndarray,
     dx: float,
@@ -187,7 +188,7 @@ def compute_rpca_error_sweep(
     ----------
     fit : ExponentialSum
         ``1/r`` の指数和近似。
-    rpca_1d_list : list[dict[str, np.ndarray]]
+    rpca_1d_list : list[Rpca1dComponents]
         各指数和項に対応する 1D カーネル分解。各要素は
         ``S_1d``, ``U_L``, ``S_L``, ``Vt_L``, ``U_s``, ``S_s``,
         ``Vt_s`` を持つ。
@@ -243,7 +244,8 @@ def compute_rpca_error_sweep(
                 k_data["Vt_L"][:rank, :],
             )
             # Compute L_r_1d contribution once; reuse across all thresholds
-            # via linearity: apply_3d_kernel(L+S) = apply_3d_kernel(L) + apply_3d_kernel(S)
+            # via linearity: apply_3d_kernel(L+S) equals the sum of
+            # apply_3d_kernel(L) and apply_3d_kernel(S).
             V_L = w_k * apply_3d_kernel(L_r_1d, rho_grid)
             V_rpca_no_thresh += V_L + w_k * apply_3d_kernel(
                 k_data["S_1d"],
@@ -252,13 +254,22 @@ def compute_rpca_error_sweep(
 
             abs_S_1d = np.abs(k_data["S_1d"])
             for thresh in thresholds:
-                S_thresh = np.where(abs_S_1d > thresh, k_data["S_1d"], 0.0)
+                S_thresh = np.where(
+                    abs_S_1d > thresh,
+                    k_data["S_1d"],
+                    0.0,
+                )
                 V_rpca_th[thresh] += V_L + w_k * apply_3d_kernel(
                     S_thresh,
                     rho_grid,
                 )
 
-        err_v_s, err_e_s = v_e_errors(_correct(V_svd), v_analytic, rho_grid, dx)
+        err_v_s, err_e_s = v_e_errors(
+            _correct(V_svd),
+            v_analytic,
+            rho_grid,
+            dx,
+        )
         errors_v_svd_only.append(err_v_s)
         errors_e_svd_only.append(err_e_s)
 

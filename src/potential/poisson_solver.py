@@ -27,12 +27,12 @@ def compute_monopole_bc(rho: np.ndarray, dx: float) -> np.ndarray:
     V_mono = Q / r
 
     V_bc = np.zeros((N, N, N))
-    V_bc[0,  :,  :] = V_mono[0,  :,  :]
-    V_bc[-1, :,  :] = V_mono[-1, :,  :]
-    V_bc[:,  0,  :] = V_mono[:,  0,  :]
-    V_bc[:, -1,  :] = V_mono[:, -1,  :]
-    V_bc[:,  :,  0] = V_mono[:,  :,  0]
-    V_bc[:,  :, -1] = V_mono[:,  :, -1]
+    V_bc[0, :, :] = V_mono[0, :, :]
+    V_bc[-1, :, :] = V_mono[-1, :, :]
+    V_bc[:, 0, :] = V_mono[:, 0, :]
+    V_bc[:, -1, :] = V_mono[:, -1, :]
+    V_bc[:, :, 0] = V_mono[:, :, 0]
+    V_bc[:, :, -1] = V_mono[:, :, -1]
     return V_bc
 
 
@@ -51,11 +51,11 @@ def laplacian_matvec(V: np.ndarray, dx: float) -> np.ndarray:
 
     AV[inn, inn, inn] = 6.0 * V[inn, inn, inn]
     AV[inn, inn, inn] -= V[0:-2, inn, inn]
-    AV[inn, inn, inn] -= V[2:,   inn, inn]
+    AV[inn, inn, inn] -= V[2:, inn, inn]
     AV[inn, inn, inn] -= V[inn, 0:-2, inn]
-    AV[inn, inn, inn] -= V[inn, 2:,   inn]
+    AV[inn, inn, inn] -= V[inn, 2:, inn]
     AV[inn, inn, inn] -= V[inn, inn, 0:-2]
-    AV[inn, inn, inn] -= V[inn, inn, 2:  ]
+    AV[inn, inn, inn] -= V[inn, inn, 2:]
 
     return AV / dx**2
 

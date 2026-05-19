@@ -10,18 +10,19 @@ from src.potential.separable_density import (
     make_gaussian_density_terms,
     materialize_density_terms,
 )
+from src.utils.cache import Rpca1dComponents
 from src.utils.grid import build_coords_centered
 
 
 def validate_rank(
-    rpca_1d_list: list[dict[str, np.ndarray]],
+    rpca_1d_list: list[Rpca1dComponents],
     rank: int,
 ) -> None:
     """要求 rank が読み込み済みデータで利用可能か確認する。
 
     Parameters
     ----------
-    rpca_1d_list : list[dict[str, np.ndarray]]
+    rpca_1d_list : list[Rpca1dComponents]
         RPCA / SVD 分解済み 1D カーネルデータ。
     rank : int
         使用したい SVD / RPCA rank。
@@ -51,7 +52,7 @@ def prepare_timing_benchmark_inputs(
     density_alpha: float,
     weights: np.ndarray,
     k_1d_list: list[np.ndarray],
-    rpca_1d_list: list[dict[str, np.ndarray]],
+    rpca_1d_list: list[Rpca1dComponents],
     r_bench: int,
     tau_bench: float,
 ) -> TimingBenchmarkInputs:
@@ -69,7 +70,7 @@ def prepare_timing_benchmark_inputs(
         指数和の重み。
     k_1d_list : list[np.ndarray]
         full 1D Gaussian カーネル行列。
-    rpca_1d_list : list[dict[str, np.ndarray]]
+    rpca_1d_list : list[Rpca1dComponents]
         RPCA / SVD 分解済み 1D カーネルデータ。
     r_bench : int
         SVD / RPCA のベンチマーク用 rank。

@@ -78,7 +78,11 @@ def create_radial_grid(N: int, L: float) -> tuple[float, np.ndarray]:
     return dr, r
 
 
-def compute_potential_1d(rho_r: np.ndarray, r: np.ndarray, dr: float) -> np.ndarray:
+def compute_potential_1d(
+    rho_r: np.ndarray,
+    r: np.ndarray,
+    dr: float,
+) -> np.ndarray:
     """球対称密度 ρ(r) から 1D FFT でポテンシャル V(r) を計算する。
 
     Args:
@@ -318,7 +322,11 @@ def run_charge_potential_demo(
     V_single_numerical_1d = compute_potential_1d(rho_1d, r_1d, dr_1d)
     mask_1d = r_1d < L * mask_radius_ratio
 
-    baseline_shift = constant_shift(V_single_exact_1d, V_single_numerical_1d, mask_1d)
+    baseline_shift = constant_shift(
+        V_single_exact_1d,
+        V_single_numerical_1d,
+        mask_1d,
+    )
     baseline_error = relative_error(
         V_single_exact_1d[mask_1d],
         V_single_numerical_1d[mask_1d] + baseline_shift,
@@ -335,7 +343,6 @@ def run_charge_potential_demo(
         "N": N,
         "L": L,
         "dx": dx,
-        
         "baseline_shift": baseline_shift,
         "baseline_error": baseline_error,
         "ref_error": ref_error,

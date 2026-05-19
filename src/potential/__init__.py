@@ -25,15 +25,8 @@ from .separable_density import (
     make_gaussian_density_terms,
     materialize_density_terms,
     materialize_potential_terms,
-    outer3,
 )
-from .poisson_solver import (
-    compute_monopole_bc,
-    laplacian_matvec,
-    rhs_with_bc,
-    cg_solve,
-    poisson_solve,
-)
+from .poisson_solver import poisson_solve
 
 __all__ = [
     "run_charge_potential_demo",
@@ -58,10 +51,5 @@ __all__ = [
     "make_gaussian_density_terms",
     "materialize_density_terms",
     "materialize_potential_terms",
-    "outer3",
-    "compute_monopole_bc",
-    "laplacian_matvec",
-    "rhs_with_bc",
-    "cg_solve",
     "poisson_solve",
 ]

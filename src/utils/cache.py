@@ -9,13 +9,23 @@ from __future__ import annotations
 import hashlib
 import pickle
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_ROOT = PROJECT_ROOT / "data" / "processed" / "cache"
+
+
+class Rpca1dComponents(TypedDict):
+    S_1d: np.ndarray
+    U_L: np.ndarray
+    S_L: np.ndarray
+    Vt_L: np.ndarray
+    U_s: np.ndarray
+    S_s: np.ndarray
+    Vt_s: np.ndarray
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -158,7 +168,7 @@ def rpca_label(
 def load_rpca_1d_list(
     rpca_dir: Path,
     n_terms: int,
-) -> list[dict[str, np.ndarray]]:
+) -> list[Rpca1dComponents]:
     """RPCA / SVD 1D カーネル分解の .npy 群を読み込む。
 
     Parameters
@@ -170,10 +180,10 @@ def load_rpca_1d_list(
 
     Returns
     -------
-    list[dict[str, np.ndarray]]
+    list[Rpca1dComponents]
         各項の sparse 成分、RPCA 低ランク成分、通常 SVD 成分。
     """
-    rpca_1d_list = []
+    rpca_1d_list: list[Rpca1dComponents] = []
     for k in range(n_terms):
         rpca_1d_list.append(
             {

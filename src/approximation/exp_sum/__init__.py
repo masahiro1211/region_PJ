@@ -10,7 +10,6 @@ from .models import ExponentialSum
 from .separable import (
     apply_3d_kernel,
     apply_1d_kernel_along_axis,
-    apply_exp_sum_potential_3d,
     apply_separable_gaussian_3d,
 )
 from .varpro import VarproOptimizer
@@ -23,5 +22,4 @@ __all__ = [
     "apply_3d_kernel",
     "apply_1d_kernel_along_axis",
     "apply_separable_gaussian_3d",
-    "apply_exp_sum_potential_3d",
 ]
