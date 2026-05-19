@@ -32,6 +32,28 @@ class SeparableDensityTerm:
     fz: np.ndarray
 
 
+@dataclass(frozen=True)
+class SeparablePotentialTerm:
+    """CP 形式のポテンシャル1項を表すデータ構造。
+
+    Attributes
+    ----------
+    coefficient : float
+        外積項全体に掛かる係数。
+    vx : np.ndarray, shape (N,)
+        x 方向の1D因子。
+    vy : np.ndarray, shape (N,)
+        y 方向の1D因子。
+    vz : np.ndarray, shape (N,)
+        z 方向の1D因子。
+    """
+
+    coefficient: float
+    vx: np.ndarray
+    vy: np.ndarray
+    vz: np.ndarray
+
+
 def make_gaussian_density_terms(
     x_axis: np.ndarray,
     alpha: float,
@@ -147,6 +169,41 @@ def materialize_density_terms(
     return rho
 
 
+def materialize_potential_terms(
+    terms: Sequence[SeparablePotentialTerm],
+    dx: float,
+) -> np.ndarray:
+    """CP 形式のポテンシャル項を dense な3Dテンソルへ戻す。
+
+    Parameters
+    ----------
+    terms : Sequence[SeparablePotentialTerm]
+        CP 形式で表したポテンシャル項の列。
+    dx : float
+        グリッド幅。返り値には体積要素 ``dx^3`` が掛かる。
+
+    Returns
+    -------
+    potential : np.ndarray, shape (N, N, N)
+        dense なポテンシャルテンソル。
+
+    Raises
+    ------
+    ValueError
+        ``dx <= 0`` の場合、または ``terms`` が空の場合。
+    """
+    if dx <= 0:
+        raise ValueError("dx must be positive.")
+    if not terms:
+        raise ValueError("terms must contain at least one potential term.")
+
+    n = len(terms[0].vx)
+    potential = np.zeros((n, n, n), dtype=float)
+    for term in terms:
+        potential += term.coefficient * outer3(term.vx, term.vy, term.vz)
+    return potential * dx**3
+
+
 def build_gaussian_kernel_1d(alpha: float, x_axis: np.ndarray) -> np.ndarray:
     """1D Gaussian カーネル行列を構築する。
 
@@ -167,14 +224,13 @@ def build_gaussian_kernel_1d(alpha: float, x_axis: np.ndarray) -> np.ndarray:
     return np.exp(-alpha * diff**2)
 
 
-def apply_exp_sum_to_separable_density(
+def apply_exp_sum_to_separable_density_cp(
     fit: ExponentialSum,
     x_axis: np.ndarray,
     density_terms: Sequence[SeparableDensityTerm],
-    dx: float,
     diag_coeff: float = 0.0,
-) -> np.ndarray:
-    """指数和 Coulomb 近似を分離表現の密度に作用させる。
+) -> list[SeparablePotentialTerm]:
+    """指数和 Coulomb 近似を分離密度に作用させ、CP 形式で返す。
 
     Parameters
     ----------
@@ -184,34 +240,32 @@ def apply_exp_sum_to_separable_density(
         各方向で共通に使う1Dグリッド点の座標配列。
     density_terms : Sequence[SeparableDensityTerm]
         CP 形式で表した電荷密度。
-    dx : float
-        グリッド幅。返り値には体積要素 ``dx^3`` が掛かる。
     diag_coeff : float, default=0.0
         対角補正として密度に掛けて足す係数。
 
     Returns
     -------
-    potential : np.ndarray, shape (N, N, N)
-        指数和カーネルを密度に作用させたポテンシャル。
+    potential_terms : list[SeparablePotentialTerm]
+        ``Σ_t a_t vx_t ⊗ vy_t ⊗ vz_t`` で表したポテンシャル項。
+        ``dx^3`` の体積要素は含まない。dense 化が必要な場合だけ
+        :func:`materialize_potential_terms` を使う。
 
     Raises
     ------
     ValueError
-        ``dx <= 0`` の場合、または ``density_terms`` が空の場合。
+        ``density_terms`` が空の場合。
 
     Notes
     -----
     Gaussian カーネルは各方向に分離できるため、各密度項
-    ``fx * fy * fz`` に対して ``(K fx) * (K fy) * (K fz)`` を計算する。
+    ``fx * fy * fz`` に対して 1D matvec
+    ``(K fx)``, ``(K fy)``, ``(K fz)`` だけを計算する。
     """
-    if dx <= 0:
-        raise ValueError("dx must be positive.")
     if not density_terms:
         raise ValueError("density_terms must contain at least one term.")
 
     x_arr = np.asarray(x_axis, dtype=float)
-    n = len(x_arr)
-    potential = np.zeros((n, n, n), dtype=float)
+    potential_terms: list[SeparablePotentialTerm] = []
 
     for weight, alpha in zip(fit.weights, fit.alphas):
         kernel = build_gaussian_kernel_1d(float(alpha), x_arr)
@@ -219,13 +273,47 @@ def apply_exp_sum_to_separable_density(
             gx = kernel @ term.fx
             gy = kernel @ term.fy
             gz = kernel @ term.fz
-            tmp = outer3(gx, gy, gz)
-            tmp *= weight * term.coefficient
-            potential += tmp
+            potential_terms.append(
+                SeparablePotentialTerm(
+                    coefficient=float(weight * term.coefficient),
+                    vx=gx,
+                    vy=gy,
+                    vz=gz,
+                )
+            )
 
     if diag_coeff != 0.0:
-        rho = materialize_density_terms(density_terms)
-        rho *= diag_coeff
-        potential += rho
+        for term in density_terms:
+            potential_terms.append(
+                SeparablePotentialTerm(
+                    coefficient=float(diag_coeff * term.coefficient),
+                    vx=term.fx,
+                    vy=term.fy,
+                    vz=term.fz,
+                )
+            )
 
-    return potential * dx**3
+    return potential_terms
+
+
+def apply_exp_sum_to_separable_density(
+    fit: ExponentialSum,
+    x_axis: np.ndarray,
+    density_terms: Sequence[SeparableDensityTerm],
+    dx: float,
+    diag_coeff: float = 0.0,
+) -> np.ndarray:
+    """指数和 Coulomb 近似を分離表現の密度に作用させる。
+
+    計算本体は CP 形式のポテンシャル項
+    :func:`apply_exp_sum_to_separable_density_cp` として保持し、呼び出し元が
+    dense な3Dテンソルを必要とするこの互換 API でのみ具現化する。
+    """
+    potential_terms = apply_exp_sum_to_separable_density_cp(
+        fit=fit,
+        x_axis=x_axis,
+        density_terms=density_terms,
+        diag_coeff=diag_coeff,
+    )
+
+    return materialize_potential_terms(potential_terms, dx)

@@ -1,313 +1,103 @@
 # region_PJ
 
-3 次元電荷分布から生成される Hartree ポテンシャル
+3 次元電荷密度 `rho(r)` から Hartree ポテンシャル
 
 $$
-V_H(\mathbf{r}_1) = \int \frac{\rho(\mathbf{r}_2)}{|\mathbf{r}_1 - \mathbf{r}_2|}\, d\mathbf{r}_2
+V_H(\mathbf{r}_1) = \int \frac{\rho(\mathbf{r}_2)}{|\mathbf{r}_1 - \mathbf{r}_2|}\,d\mathbf{r}_2
 $$
 
-を、Coulomb カーネル $1/r$ の **指数和近似** と **低ランク／スパース分解** によって高速に評価することを目的とした研究用プロジェクト。
+を高速に評価するための研究用コードです。中心にある考え方は、Coulomb カーネル `1/r` を Gaussian の指数和で近似し、Gaussian の次元分離性と 1D カーネルの低ランク構造を使って、3D 畳み込みの計算量を下げることです。
 
-線形代数の基礎実装（SVD・Tucker 分解・RPCA）から、それらを物理問題へ適用するデモまでを一貫して扱う。
+詳しい研究の流れ、実験結果、考察は [docs/research/flow.md](docs/research/flow.md) に分けています。この README は、プロジェクトの入口として必要な情報だけを置きます。
 
----
+## Core Idea
 
-## 1. 背景と目的
-
-### 1.1 背景
-
-第一原理計算や密度汎関数理論 (DFT) において、電子密度 $\rho(\mathbf{r})$ から Hartree ポテンシャルを得る計算はもっとも重い処理のひとつである。各方向 $N$ 点の 3D グリッド上で素朴に積分すると **$O(N^6)$** の計算量となり、$N$ がやや大きくなるだけで現実的に解けなくなる。
-
-代表的な高速化手法は次の 2 つに大別される。
-
-1. **FFT を用いた周期境界での解法**（$O(N^3 \log N)$）
-2. **多極子展開・カーネル分離による低ランク化**（$O(R\,N^4)$ など）
-
-本プロジェクトでは、後者の路線で次元分離可能な Gaussian の重ね合わせとしてカーネルを近似し、さらに行列分解 (SVD / RPCA) で 1D カーネル自体を圧縮する。
-
-### 1.2 目的
-
-- Coulomb カーネル $1/r$ を **指数和**
+Coulomb カーネルを
 
 $$
-\frac{1}{r} \approx \sum_{k=1}^{R} w_k \, e^{-\alpha_k r^2}
+\frac{1}{r} \approx \sum_{k=1}^{R} w_k e^{-\alpha_k r^2}
 $$
 
-  で近似し、Hartree ポテンシャル評価を **$O(R \cdot N^4)$** に落とす。
-- 1D Gaussian カーネル $K_{ij}=e^{-\alpha(x_i-x_j)^2}$ にさらに **SVD / Robust PCA** を施し、$O(r\,N^3)$ への削減を狙う。
-- 評価指標として、ポテンシャル相対誤差だけでなく **Hartree エネルギー** $E = \tfrac{1}{2}\int\rho V\, d^3r$ の相対誤差を主指標に据え、目標値を **$O(10^{-3})$** とする。
-- 計算量解析で予測される速度差を、**同一バックエンド（PyTorch）** での計測で確認する。
-
-### 1.3 SVD と Tucker 分解の対応関係
-
-| SVD | Tucker |
-|---|---|
-| 左特異ベクトル $U_r$ | 因子行列 $U_1, U_2, \ldots, U_N$ |
-| 特異値 $\Sigma_r$ | コアテンソル $\mathcal{G}$ |
-| 右特異ベクトル $V_r$ | 各モードの因子行列 |
-
----
-
-## 2. 手法
-
-### 2.1 ベースライン: FFT 解法と実空間 CG 解法
-
-- **FFT 解法**: 周期境界条件のもとで $\hat V(\mathbf{k}) = 4\pi \hat \rho(\mathbf{k})/|\mathbf{k}|^2$ を評価（[src/potential/charge_potential.py](src/potential/charge_potential.py)）。
-- **実空間 CG 解法**: モノポール境界条件 $V|_\partial = Q/r$ を与え、中央差分の Laplacian に対して共役勾配法でポアソン方程式を解く（[src/potential/poisson_solver.py](src/potential/poisson_solver.py)）。グリッドを細かくすると $O(dx^2)$ で解析解に近づくことを確認している（4/13 宿題）。
-
-### 2.2 指数和近似（VARPRO）
-
-指数和
-
-$$
-\frac{1}{r} \approx \sum_k w_k e^{-\alpha_k r^2}
-$$
-
-のフィッティングは、線形パラメータ $w_k$ と非線形パラメータ $\alpha_k$ を変数射影法 (VARPRO) で同時最適化する（[src/approximation/exp_sum/varpro.py](src/approximation/exp_sum/varpro.py)）。
-
-- 外側ループ: `L-BFGS-B` で $\log\alpha_k$ を最適化（非線形、$R$ 変数）
-- 内側ループ: 与えられた $\alpha_k$ に対して **NNLS** で $w_k\ge 0$ を解析的に解く
-- グリッドは log-uniform、評価グリッドは 2000 点
-- 結果は SHA256 ベースのキー付き **pkl キャッシュ** で再利用（[src/utils/cache.py](src/utils/cache.py)）
-
-参考: Hackbusch (2019), Beylkin & Monzón (2005)。
-
-### 2.3 次元分離による 3D 畳み込み
-
-Gaussian は次元分離可能であり、
+で近似する。Gaussian は
 
 $$
 e^{-\alpha|\mathbf{r}_1-\mathbf{r}_2|^2}
-= e^{-\alpha(x_1-x_2)^2}\,e^{-\alpha(y_1-y_2)^2}\,e^{-\alpha(z_1-z_2)^2}
+= e^{-\alpha(x_1-x_2)^2}e^{-\alpha(y_1-y_2)^2}e^{-\alpha(z_1-z_2)^2}
 $$
 
-3D 畳み込みは **1D Gaussian カーネル $K\in\mathbb{R}^{N\times N}$ を mode-n product で 3 軸に逐次適用**することに帰着する。素朴な評価の $O(N^6)$ から **$O(R\,N^4)$** に削減される（[src/approximation/exp_sum/separable.py](src/approximation/exp_sum/separable.py) `apply_separable_gaussian_3d`）。
+と分離できるので、3D 評価は 1D カーネル行列 `K` の軸方向適用に分解できる。
 
-### 2.4 1D カーネルの低ランク／スパース分解
-
-1D Gaussian カーネル $K_{ij} = e^{-\alpha(x_i-x_j)^2}$ にさらに次の 2 系統を施し、計算量と精度を比較する。
-
-#### 2.4.1 SVD のみの圧縮
+さらに 1D カーネルを
 
 $$
-K \approx U_r \Sigma_r V_r^\top
+K \approx U_r \Sigma_r V_r^T
 $$
 
-mode-n product を **正しい評価順** $U_r(\Sigma_r(V_r^\top \rho))$ で適用すると、各軸の計算量は **$O(r N^3)$**。一方、$U_r\Sigma_r V_r^\top$ を **先に組み立て直して** $K_r$ として作用させるとフルランク扱いに戻り $O(N^4)$ のまま、という典型的な落とし穴がある（5/2 宿題）。両者を区別して計測している。
+と圧縮し、`V_r^T -> Sigma_r -> U_r` の順で作用させることで、低ランクの計算量削減を保つ。`K_r` を先に再構成すると full rank と同じ扱いに戻るので、この順序が重要です。
 
-#### 2.4.2 Robust PCA (RPCA) によるさらなる次元削減
-
-純粋な SVD だけでは捉えにくい構造として、Gaussian カーネル $K$ には次の 2 つの寄与が混在している。
-
-- **滑らかで緩やかな成分**: $|x_i - x_j|$ が大きい領域。少数の特異値で十分に表現できる「真の低ランク部分」。
-- **対角近傍に局在したピーク**: $\alpha$ が大きいカーネルでは対角付近に値が集中する「外れ値的」成分。これを SVD のみで表現しようとすると、必要なランクが急増する。
-
-そこで RPCA で
+密度 `rho` 自体が CP 形式
 
 $$
-K = L + S \quad \text{（} L \text{: 低ランク、} S \text{: スパース）}
+\rho = \sum_m c_m\rho_m^x \otimes \rho_m^y \otimes \rho_m^z
 $$
 
-と分けることで、
-
-- $L$ は本来の低ランク構造のみを担うため、**SVD よりも小さい $r$ で同程度の精度** が得られることが期待できる。
-- $S$ は局在ピークを担い、しきい値 $\tau$ で $|S_{ij}|<\tau$ を 0 に丸めれば **疎行列**として扱える。
-
-実装は次のとおり（[src/decomposition/rpca.py](src/decomposition/rpca.py)）：
-
-- ALM (Augmented Lagrangian Method) 版 `rpca`
-- 各反復で randomized SVD を使う高速版 `randomized_rpca`（本研究では target rank = $N/4$ を使用）
-
-#### 2.4.3 計算量の見積り（RPCA 経路）
-
-mode-n product による各軸の評価コストは
+で与えられる場合は、ポテンシャルも CP 項のまま保持できます。
 
 $$
-\underbrace{O(r N^3)}_{\text{$L$ の rank-$r$ SVD}} \;+\; \underbrace{O(\mathrm{nnz}(S_\tau) \cdot N^2)}_{\text{$S$ の SpMM}}
+V = dx^3 \sum_k w_k \sum_m c_m
+(K_k\rho_m^x) \otimes (K_k\rho_m^y) \otimes (K_k\rho_m^z)
 $$
 
-$\mathrm{nnz}(S_\tau) \ll N^2$ かつ $r$ が小さければ、SVD 単独より **さらに削減**できる。本実装では、しきい値後の非ゼロ率が **0.1% 以下のときのみ** PyTorch の `torch.sparse.mm` (CSR) に切り替え、それ以外は dense `tensordot` を使う動的ディスパッチを採用している。
+この経路では、必要になるのは 1D matvec だけです。dense な `N^3` テンソルへの materialize は、可視化や dense API との比較が必要なときだけ行います。
 
-### 2.5 Tucker (HOSVD) 系の経路
+## Current Focus
 
-3D 密度 $\rho$ そのものに対する Tucker 分解（HOSVD）と、各 mode 展開に RPCA を施した HOSVD 改も実装（[src/decomposition/tucker.py](src/decomposition/tucker.py) `perform_tucker_rpca`）。これは「カーネル側」ではなく「密度側」を圧縮する経路で、ベースライン比較に用いる。
+- VARPRO + NNLS による `1/r` の指数和近似
+- Gaussian 分離による `O(N^6) -> O(R N^4)` の評価
+- SVD による 1D カーネルの低ランク適用
+- RPCA による `K = L + S` 分解と sparse/dense 動的ディスパッチ
+- 対角補正による Hartree エネルギー精度の改善
+- CP 形式密度に対する 1D matvec ベースのポテンシャル・エネルギー評価
+- PyTorch 統一バックエンドでのタイミング比較
 
-### 2.6 対角成分の補正
-
-指数和近似では中心 $r=0$ で値が有限の $\sum_k w_k$ にとどまり、$1/r$ の特異性を表現できない。そこで一辺 $dx$ の立方体内で $1/r$ を解析積分した値
-
-$$
-K_{\text{diag}} = \frac{1}{dx^3} \iiint_{[-dx/2, dx/2]^3} \frac{1}{r}\,d^3r \approx \frac{2.38}{dx}
-$$
-
-を用いて、対角寄与を $K_{\text{diag}} - \sum_k w_k$ ぶんだけ後付けで補正する。
-
-### 2.7 PyTorch への計算経路統一
-
-NumPy / SciPy / `sparse-dot-mkl` 等を混在させると、関数ごとの BLAS / OpenMP 実装差で純粋な計算量比較が崩れる。これを避けるため、ベンチマーク部分（full / low-rank 順序ミス / low-rank 正解 / RPCA + sparse）を **すべて PyTorch テンソル演算 (`torch.tensordot`, `torch.sparse.mm`)** に統一した（最新コミット: `f3a5877 pytorchに統一`）。
-
----
-
-## 3. 結果と考察
-
-評価条件（代表値）: $N=151$、$L=20$、$\alpha=1.0$、単一 Gaussian 電荷。指数和ランク $R=1,\ldots,30$。
-
-### 3.1 指数和近似の精度
-
-`tests/`, ノートブック [notebooks/calc_potential_exp_expansion_approx.ipynb](notebooks/calc_potential_exp_expansion_approx.ipynb) より：
-
-| $R$ | $L_2$ 相対誤差（$1/r$） | $L_\infty$ 相対誤差 |
-|---:|---:|---:|
-| 11 | 1.66e−1 | 9.10e−1 |
-| 17 | 5.34e−3 | 5.34e−2 |
-| 21 | 1.07e−3 | 3.68e−3 |
-| 25 | 1.78e−4 | 1.12e−3 |
-| 30 | 4.08e−5 | 5.00e−4 |
-
-$R \gtrsim 20$ で関数近似自体は $10^{-3}$ を切る。
-
-### 3.2 ポテンシャル / Hartree エネルギーの誤差
-
-$V$ と $E=\tfrac{1}{2}\int\rho V\,d^3r$ の相対誤差を、対角補正の有無で比較した結果：
-
-- **対角補正なし**: $R$ を増やしても $V$ 誤差が $10^{-1}$ 程度で頭打ち。$\sum_k w_k$ が $K_{\text{diag}}$ に届かないため。
-- **対角補正あり**: $R=15$ 付近で $E$ 相対誤差は **$10^{-3}\sim10^{-4}$** に到達し、目標値 $O(10^{-3})$ を満たす。ただし $R=15$ 以降はプラトーに入る。
-
-**プラトーの原因**: $E$ をリーマン和（`np.sum(rho * V) * dx**3`）で評価しているため、近似関数の改善ではなく **離散化誤差 $O(dx^2)$** が支配的になる。これは $N=151$, $L=20$ で $dx\approx 0.132$、対応する誤差スケールが $10^{-3}\sim10^{-4}$ となることと整合する。
-
-### 3.3 1D カーネルの SVD 圧縮
-
-指数和 $R=11$ を固定し、1D カーネルの圧縮ランク $r$ を $1\to 25$ でスイープすると、**$r$ を上げるほど $V$, $E$ 誤差が単調に減少**し、$r\approx 15$ 付近で指数和側の上限（$R=11$ の精度上限 $\sim 10^{-1}$）に到達する。すなわち、`R` が支配する精度の天井がある以上、$r$ をそれ以上上げても得るものは少ない。
-
-### 3.4 RPCA によるさらなる次元削減効果
-
-同じ条件で RPCA 経路を比較した。$K = L + S$ に分けたうえで、$L$ の SVD ランク $r$ と $S$ のしきい値 $\tau \in \{10^{-6}, 10^{-5}, 10^{-4}, 10^{-3}, 10^{-2}, 10^{-1}, 1.0\}$ を独立にスイープしている（[notebooks/calc_potential_exp_expansion_approx.ipynb](notebooks/calc_potential_exp_expansion_approx.ipynb)）。
-
-**(a) 同一ランク $r$ における精度比較**
-
-- **SVD のみ**: ランク $r$ を上げるほど $V$ / $E$ 誤差が滑らかに減少。
-- **RPCA（しきい値なし、$L_r + S$）**: 同じ $r$ で SVD のみと **同等以上** の精度。これは「対角近傍に局在する成分が $S$ に逃げているため、$L$ が真に低ランクで済む」ことの実測的な裏付けになっている。
-- **RPCA + しきい値**: $\tau$ を大きくするにつれて精度が劣化するが、$\tau \le 10^{-3}$ 程度までは SVD のみとほぼ同精度を保つ。
-
-**(b) しきい値 $\tau$ と非ゼロ率 $\mathrm{nnz}/N^2$ のトレードオフ**
-
-$N=151$ における $S$ の平均非ゼロ率は、$\tau$ を大きくするとほぼ単調に下がる。本実装では「動的に sparse / dense を切り替える」基準として **非ゼロ率 0.1% 以下** を採用しており、$\tau=10^{-2}$ では指数和の 11 個のカーネルのうち 1 個のみが sparse 経路に乗った（残り 10 個は dense）。
-
-これは「$\alpha_k$ が小さい（広い）カーネルは $S$ に局在ピークが立たず dense のままの方が速い／$\alpha_k$ が大きい（鋭い）カーネルでは強い局在ピークが立ち sparse 経路で利得が出る」という挙動と整合し、**カーネルごとに異なる経路を割り当てる動的ディスパッチが正しく機能している**ことを示唆する。
-
-**(c) 何が削減できているのか**
-
-「次元削減」という観点で RPCA がもたらす効果は次の 2 段階に整理できる。
-
-1. **$L$ の有効ランクが下がる**: 対角近傍の局在ピークが $S$ に分離されるため、純粋な SVD では大きく取らざるを得なかったランクを、より小さい $r$ に抑えられる（同じ精度を保つ最小 $r$ が下がる）。
-2. **$S$ のスパース化**: しきい値 $\tau$ により $S$ をスパースにすれば、その軸の計算量は $O(\mathrm{nnz}\cdot N^2)$ に落ち、$L$ の $O(rN^3)$ に上乗せしても dense 経路の $O(N^4)$ より小さくできる。
-
-**(d) 限界と注意点**
-
-- 現状の RPCA 経路では、`for` ループで $R=11$ 個のカーネルを逐次評価しており、Python 側の経路切替・反復オーバーヘッドが無視できない。後述の計算時間表（§3.5）では、純粋な mode-n product (SVD のみ) より遅くなるケースもある。
-- 「同精度を保ちつつ $r$ を SVD より小さくする」という $L$ の利得は、$\alpha_k$ の値に強く依存する。指数和フィットで使う $\alpha_k$ の分布次第で、RPCA が刺さるかどうかが変わる。
-- $\tau$ と sparse / dense 切替閾値は今回ヒューリスティックに選んでおり、最適化の余地がある。
-
-### 3.5 計算時間（PyTorch 統一、$N=151$, $R=11$, $r=15$）
-
-`%%timeit -n 10 -r 10` での実測（最新セル）：
-
-| 経路 | 計算量（理論） | 実測 |
-|---|---|---|
-| full ($K$ をそのまま 3 軸に tensordot) | $O(N^4)$ | 137 ± 31 ms |
-| low-rank（順序ミス: $K_r$ を再構成して適用） | $O(N^4)$ | 96.6 ± 1.3 ms |
-| **low-rank（正しい順序: mode-n product）** | **$O(r N^3)$** | **61.6 ± 0.7 ms** |
-| RPCA ($L$ は mode-n、$S$ は閾値後 sparse / dense) | (混在) | 123 ± 2.7 ms |
-
-正しい mode-n product はフル評価の **約 2.2 倍速** となり、計算量解析（$O(rN^3)$ vs $O(N^4)$、$r/N\approx 0.1$）と一致する。一方、再構成 → tensordot の順序ミスは「低ランクなのに $O(N^4)$」になる典型を実測でも確認できた。
-
-RPCA は現状ややオーバーヘッドが大きく、$L$ + sparse $S$ を別経路で足し合わせる構成のため「11 個のカーネル × dense+sparse 2 系統」が full より遅くなるケースがある。閾値 $\tau$ や sparse / dense の切替閾値（現状は非ゼロ率 0.1%）の調整余地が残っている。
-
-### 3.6 知見の要点
-
-- 目標精度 $E$ 相対誤差 $O(10^{-3})$ は **$R \ge 15$ + 対角補正** で達成可能。
-- 精度の頭打ちは離散化誤差由来であり、$N$（あるいは $dx$）を細かくしないと $R$ を増やすだけでは改善しない。
-- **RPCA は精度面で「$L$ の有効ランクを下げる」効果が確認できた**。一方、計算時間に直結させるには Python 側のループや経路切替コストの最小化、$\tau$ や sparse / dense 切替閾値の最適化が課題。
-- 計算量の理論差は **正しい評価順** で初めて顕在化する。プロファイリングは「同一バックエンド」が必須。
-
----
-
-## 4. まとめと今後の展望
-
-### 4.1 まとめ
-
-1. Coulomb カーネル $1/r$ を VARPRO + NNLS で指数和近似し、$R$ vs 誤差曲線を取得した。
-2. 次元分離 + mode-n product により、3D Hartree ポテンシャル計算を $O(N^6) \to O(R\,N^4) \to O(R\,r\,N^3)$ に段階的に削減した。
-3. 対角補正により、近似による $r=0$ 付近の不一致を緩和し、Hartree エネルギーで目標精度 $O(10^{-3})$ を達成した。
-4. PyTorch に経路を統一して計算時間を比較し、**理論計算量と実測の整合**を確認した。
-5. 重い計算（VARPRO、RPCA）は SHA256 ベースの pkl キャッシュで再利用可能にした。
-
-### 4.2 今後の展望
-
-- **離散化誤差の打破**: グリッド細分化に対する $E$ 誤差の収束次数を再計測し、リーマン和を Simpson 則や trapezoidal で置き換えた場合の効果を見る。
-- **短距離・長距離の分離**: 短距離は実空間（指数和 + 対角補正）、長距離は FFT で扱う Ewald 風スキームの導入（4/23 宿題の延長）。
-- **RPCA 経路のさらなる効率化**:
-  - $\tau$ と $L$ のランク $r$ の同時最適化（精度を固定したときの計算時間最小点を探す）。
-  - sparse / dense 切替閾値（現状 nnz ≤ 0.1%）のスイープ。
-  - 11 個のカーネルを逐次処理している `for` ループのバッチ化（PyTorch のバッチテンソル化、もしくは GPU バックエンド）。
-  - $\alpha_k$ ごとに「sparse のほうが速いカーネル」「dense のほうが速いカーネル」を事前に判定する基準の確立。
-- **多中心・非対称な $\rho$ への拡張**: 現状は単一 Gaussian 中心の検証が中心。複数中心や DFT 由来の電子密度への適用に進む。
-- **打ち切り次元の自動決定**: 特異値減衰やエネルギー保持比に基づくランク自動選択ルールを実装する。RPCA についても「精度劣化が出始める $r$」を自動検出する仕組みを検討する。
-
----
-
-## ディレクトリ構成
+## Important Files
 
 ```text
-region_PJ/
-├── src/
-│   ├── approximation/
-│   │   ├── exp_sum/                # 指数和近似と分離 Gaussian 適用
-│   │   │   ├── models.py           # ExponentialSum
-│   │   │   ├── grid.py             # log-uniform fit/eval grid
-│   │   │   ├── varpro.py           # VARPRO による 1/r ≈ Σ w_k exp(-α_k r²)
-│   │   │   ├── benchmark.py        # rank sweep runner
-│   │   │   └── separable.py        # 3D separable Gaussian application
-│   │   └── low_rank.py             # SVD / Tucker 統一インターフェース
-│   ├── decomposition/
-│   │   ├── svd.py                  # perform_svd
-│   │   ├── tucker.py               # perform_tucker, perform_tucker_rpca
-│   │   └── rpca.py                 # rpca, randomized_rpca
-│   ├── potential/
-│   │   ├── charge_potential.py     # FFT 解法、Tucker 評価ループ
-│   │   └── poisson_solver.py       # 実空間 CG + monopole BC
-│   └── utils/
-│       ├── grid.py                 # 中心対称グリッド生成
-│       ├── metrics.py              # relative_error, hartree_energy
-│       ├── tensor_ops.py           # unfold, mode_n_product
-│       └── cache.py                # pkl ベースの結果キャッシュ
-├── notebooks/
-│   ├── calc_exact_potential.ipynb
-│   ├── calc_gaussian_potential_1D.ipynb
-│   ├── calc_gaussian_potential_3D.ipynb
-│   └── calc_potential_exp_expansion_approx.ipynb   # 主たる検証ノート
-├── tests/
-├── data/
-│   └── processed/cache/            # VARPRO / RPCA 結果のキャッシュ
-├── docs/coding_standards.md
-├── References.md
-├── homework.md                     # 進捗メモ（4/13, 4/23, 4/27, 5/1, 5/2）
-├── requirements.txt
-├── pyproject.toml
-└── README.md
+src/
+  approximation/
+    exp_sum/                # 指数和近似、VARPRO、分離 Gaussian 評価
+    torch_kernels.py        # PyTorch 版 full / low-rank / RPCA 評価
+    cp_coulomb.py           # CP 密度向け PyTorch 評価
+    low_rank.py             # SVD helper
+  decomposition/
+    rpca.py                 # RPCA / randomized RPCA
+    tucker.py               # Tucker / HOSVD 系
+  potential/
+    separable_density.py    # CP 形式密度、CP 形式ポテンシャル
+    gaussian_discretization.py
+    charge_potential.py     # FFT 解法、解析 Gaussian ポテンシャル
+    poisson_solver.py       # 実空間 Poisson CG 解法
+  utils/
+    grid.py
+    metrics.py
+    cache.py
+
+notebooks/
+  calc_potential_exp_expansion_approx.ipynb
+
+scripts/
+  run_exp_sum_fitting.py
+  run_rpca_kernels.py
+  run_rpca_error_sweep.py
+  run_timing_benchmark.py
+
+docs/
+  research/flow.md          # 研究の流れと結果
+  coding_standards.md
+  testing.md
 ```
 
-## セットアップ
-
-### Windows (PowerShell)
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-```
-
-### macOS / Linux
+## Setup
 
 ```bash
 python -m venv .venv
@@ -315,84 +105,89 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-## 使い方
+Windows PowerShell の場合:
 
-### SVD / Tucker による低ランク近似
-
-```python
-import numpy as np
-from src.approximation.low_rank import approximate
-
-X_mat = np.random.randn(100, 80)
-X_svd = approximate(X_mat, ranks=10, method="svd")
-
-X_tensor = np.random.randn(20, 15, 10)
-X_tucker = approximate(X_tensor, ranks=[5, 4, 3], method="tucker")
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-### 指数和フィッティング
+PyTorch を含む notebook / benchmark 用の依存は `pyproject.toml` の optional dependencies も参照してください。
+
+## Common Commands
+
+指数和フィット:
+
+```bash
+python scripts/run_exp_sum_fitting.py --compute
+```
+
+1D カーネルの SVD/RPCA 保存:
+
+```bash
+python scripts/run_rpca_kernels.py --compute
+```
+
+RPCA 誤差 sweep:
+
+```bash
+python scripts/run_rpca_error_sweep.py
+```
+
+タイミング benchmark:
+
+```bash
+python scripts/run_timing_benchmark.py
+```
+
+テスト:
+
+```bash
+python -m pytest -q
+```
+
+## Minimal Examples
+
+指数和フィット:
 
 ```python
 from src.approximation.exp_sum.benchmark import BenchmarkRunner
 from src.approximation.exp_sum.grid import LogUniformGrid
 from src.approximation.exp_sum.varpro import VarproOptimizer
 
-fit_grid  = LogUniformGrid(r_min=1e-2, r_max=2*3**0.5*20, n_points=2000)
-eval_grid = LogUniformGrid(r_min=1e-2, r_max=2*3**0.5*20, n_points=2000)
+fit_grid = LogUniformGrid(r_min=1e-2, r_max=2 * 3**0.5 * 20, n_points=2000)
+eval_grid = LogUniformGrid(r_min=1e-2, r_max=2 * 3**0.5 * 20, n_points=2000)
 
-opt    = VarproOptimizer(fit_grid, eval_grid, nonneg=True, max_iter=200_000)
-runner = BenchmarkRunner(opt, ranks=range(1, 31))
-fits   = runner.run()
+optimizer = VarproOptimizer(fit_grid, eval_grid, nonneg=True, max_iter=200_000)
+runner = BenchmarkRunner(optimizer, ranks=range(1, 31))
+fits = runner.run()
 ```
 
-### 結果キャッシュ
+CP 形式密度への指数和適用:
 
 ```python
-from src.utils.cache import load_or_compute
-
-result = load_or_compute(
-    namespace="exp_sum_fits",
-    params={"R": 30, "N": 151, "L": 20.0},
-    compute=lambda: runner.run(),
+from src.potential.separable_density import (
+    apply_exp_sum_to_separable_density_cp,
+    make_gaussian_density_terms,
+    materialize_potential_terms,
 )
+
+rho_terms = make_gaussian_density_terms(x_axis, alpha=1.0)
+V_terms = apply_exp_sum_to_separable_density_cp(fit, x_axis, rho_terms)
+V_dense = materialize_potential_terms(V_terms, dx)  # 必要な場合だけ
 ```
 
-### 電荷ポテンシャルデモ
+## Documentation
 
-```python
-from src.potential.charge_potential import run_charge_potential_demo
+- [docs/research/flow.md](docs/research/flow.md): 研究の流れ、手法、知見、今後の課題
+- [docs/testing.md](docs/testing.md): テスト規約
+- [docs/coding_standards.md](docs/coding_standards.md): コーディング規約
+- [References.md](References.md): 参考文献・リンク
+- [homework.md](homework.md): 作業メモ
 
-result = run_charge_potential_demo(N=32, ranks=[1, 2, 4, 8])
-print(result["baseline_error"], result["ref_error"])
-```
+## Notes
 
-## テスト
-
-```powershell
-python -m pytest tests/
-```
-
-## 依存ライブラリ
-
-| ライブラリ | 用途 |
-|---|---|
-| numpy | 数値計算・テンソル演算 |
-| scipy | 特殊関数、`nnls`、`L-BFGS-B` |
-| scikit-learn | randomized SVD |
-| pytorch | 計算時間比較ベンチマークの統一バックエンド |
-| sparse-dot-mkl | 旧経路でのスパース行列積（参考実装として保持） |
-| pytest | テスト |
-
-## メモ
-
-1. ポテンシャル比較では定数シフト（ゲージ自由度）を補正して誤差を評価する。
-2. 周期境界条件の影響を避けるため、内部マスク領域 ($R < L/3$ など) で誤差評価を行う。
-3. 評価指標としては $V$ 単独の相対誤差より、Hartree エネルギー $E$ の相対誤差を優先する（5/1 メモ）。
-
-## コーディング規約
-
-[docs/coding_standards.md](docs/coding_standards.md) を参照。
-
-## 参考文献・リンク
-
-[References.md](References.md) を参照。Hackbusch のテンソル分解、Beylkin & Monzón の指数和近似、Robust PCA、ランダム化 SVD などへのリンクを掲載している。
+- 精度評価では、ポテンシャル `V` の相対誤差だけでなく Hartree エネルギー `E_H` の相対誤差を重視します。
+- `1/r` の特異点は指数和だけでは表現できないため、セル平均に基づく対角補正を入れています。
+- タイミング比較では backend 差を避けるため、主要経路を PyTorch に寄せています。

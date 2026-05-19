@@ -18,10 +18,13 @@ from .regularized_coulomb import (
 )
 from .separable_density import (
     SeparableDensityTerm,
+    SeparablePotentialTerm,
     apply_exp_sum_to_separable_density,
+    apply_exp_sum_to_separable_density_cp,
     build_gaussian_kernel_1d,
     make_gaussian_density_terms,
     materialize_density_terms,
+    materialize_potential_terms,
     outer3,
 )
 from .poisson_solver import (
@@ -48,10 +51,13 @@ __all__ = [
     "smoothstep_window",
     "split_kernel_near_far",
     "SeparableDensityTerm",
+    "SeparablePotentialTerm",
     "apply_exp_sum_to_separable_density",
+    "apply_exp_sum_to_separable_density_cp",
     "build_gaussian_kernel_1d",
     "make_gaussian_density_terms",
     "materialize_density_terms",
+    "materialize_potential_terms",
     "outer3",
     "compute_monopole_bc",
     "laplacian_matvec",

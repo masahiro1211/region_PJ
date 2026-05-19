@@ -92,7 +92,7 @@ def compute_exp_sum_energy_error(
     Returns
     -------
     error : ExpSumEnergyError
-        グリッド参照値と連続系解析値に対する誤差評価。
+        連続系解析値に対する誤差評価。
     """
     dx = L / N
     xyz = build_xyz(N, L)
@@ -128,7 +128,7 @@ def compare_exp_sum_discretization(
     ranks: Sequence[int],
     cell_int_const: float = 2.38,
 ) -> dict[int, list[ExpSumEnergyError]]:
-    """複数Nで離散化誤差と指数和近似誤差を比較する。
+    """複数Nで指数和近似エネルギーの連続系解析値との誤差を比較する。
 
     Parameters
     ----------

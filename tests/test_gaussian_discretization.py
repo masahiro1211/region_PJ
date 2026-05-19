@@ -5,7 +5,6 @@ from src.potential.gaussian_discretization import (
     analytic_gaussian_hartree_energy,
     compare_exp_sum_discretization,
     compute_exp_sum_energy_error,
-    compute_grid_energy_reference,
     compute_rpca_error_sweep,
 )
 
@@ -17,18 +16,6 @@ def test_analytic_gaussian_hartree_energy_matches_closed_form():
     actual = analytic_gaussian_hartree_energy(alpha=1.0)
 
     assert actual == expected
-
-
-def test_compute_grid_energy_reference_returns_finite_errors():
-    """グリッド参照エネルギーを計算したとき、誤差指標は有限値になる。"""
-    reference = compute_grid_energy_reference(N=5, L=6.0, alpha=1.0)
-
-    assert reference.N == 5
-    assert reference.dx == 6.0 / 5
-    assert np.isfinite(reference.energy_grid)
-    assert np.isfinite(reference.energy_exact)
-    assert reference.abs_error >= 0.0
-    assert reference.rel_error >= 0.0
 
 
 def test_compute_exp_sum_energy_error_returns_rank_and_finite_errors():
@@ -43,7 +30,6 @@ def test_compute_exp_sum_energy_error_returns_rank_and_finite_errors():
     assert row.rank == 2
     assert row.N == 5
     assert np.isfinite(row.energy_exp_sum)
-    assert row.err_vs_grid_ref >= 0.0
     assert row.err_vs_cont_exact >= 0.0
 
 
@@ -60,7 +46,7 @@ def test_compare_exp_sum_discretization_groups_rows_by_rank():
         ),
     }
 
-    grid_rows, rank_rows = compare_exp_sum_discretization(
+    rank_rows = compare_exp_sum_discretization(
         N_values=[5, 7],
         L=6.0,
         alpha=1.0,
@@ -68,7 +54,6 @@ def test_compare_exp_sum_discretization_groups_rows_by_rank():
         ranks=[1, 2],
     )
 
-    assert [row.N for row in grid_rows] == [5, 7]
     assert set(rank_rows) == {1, 2}
     assert [row.N for row in rank_rows[1]] == [5, 7]
     assert [row.rank for row in rank_rows[2]] == [2, 2]
