@@ -219,6 +219,9 @@ def compute_rpca_error_sweep(
 
     diag_coeff = k_diag_true - float(np.sum(fit.weights))
 
+    def _correct(V_raw: np.ndarray) -> np.ndarray:
+        return (V_raw + diag_coeff * rho_grid) * dx**3
+
     for rank in svd_ranks:
         print(f"[rank {rank}] evaluating SVD / RPCA error sweep", flush=True)
 
@@ -239,33 +242,28 @@ def compute_rpca_error_sweep(
                 k_data["S_L"][:rank],
                 k_data["Vt_L"][:rank, :],
             )
-            K_rpca_1d = L_r_1d + k_data["S_1d"]
-            V_rpca_no_thresh += w_k * apply_3d_kernel(
-                K_rpca_1d,
+            # Compute L_r_1d contribution once; reuse across all thresholds
+            # via linearity: apply_3d_kernel(L+S) = apply_3d_kernel(L) + apply_3d_kernel(S)
+            V_L = w_k * apply_3d_kernel(L_r_1d, rho_grid)
+            V_rpca_no_thresh += V_L + w_k * apply_3d_kernel(
+                k_data["S_1d"],
                 rho_grid,
             )
 
+            abs_S_1d = np.abs(k_data["S_1d"])
             for thresh in thresholds:
-                S_thresh = np.where(
-                    np.abs(k_data["S_1d"]) > thresh,
-                    k_data["S_1d"],
-                    0.0,
-                )
-                K_rpca_th_1d = L_r_1d + S_thresh
-                V_rpca_th[thresh] += w_k * apply_3d_kernel(
-                    K_rpca_th_1d,
+                S_thresh = np.where(abs_S_1d > thresh, k_data["S_1d"], 0.0)
+                V_rpca_th[thresh] += V_L + w_k * apply_3d_kernel(
+                    S_thresh,
                     rho_grid,
                 )
 
-        V_svd_corr = (V_svd + diag_coeff * rho_grid) * dx**3
-        V_rpca_no_corr = (V_rpca_no_thresh + diag_coeff * rho_grid) * dx**3
-
-        err_v_s, err_e_s = v_e_errors(V_svd_corr, v_analytic, rho_grid, dx)
+        err_v_s, err_e_s = v_e_errors(_correct(V_svd), v_analytic, rho_grid, dx)
         errors_v_svd_only.append(err_v_s)
         errors_e_svd_only.append(err_e_s)
 
         err_v_rpca_no, err_e_rpca_no = v_e_errors(
-            V_rpca_no_corr,
+            _correct(V_rpca_no_thresh),
             v_analytic,
             rho_grid,
             dx,
@@ -274,11 +272,8 @@ def compute_rpca_error_sweep(
         errors_e_rpca.append(err_e_rpca_no)
 
         for thresh in thresholds:
-            V_rpca_th_corr = (
-                V_rpca_th[thresh] + diag_coeff * rho_grid
-            ) * dx**3
             err_v_th, err_e_th = v_e_errors(
-                V_rpca_th_corr,
+                _correct(V_rpca_th[thresh]),
                 v_analytic,
                 rho_grid,
                 dx,

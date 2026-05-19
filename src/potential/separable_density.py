@@ -165,7 +165,7 @@ def materialize_density_terms(
     n = len(terms[0].fx)
     rho = np.zeros((n, n, n), dtype=float)
     for term in terms:
-        rho += term.coefficient * outer3(term.fx, term.fy, term.fz)
+        rho += (term.coefficient * term.fx)[:, None, None] * term.fy[None, :, None] * term.fz[None, None, :]
     return rho
 
 
@@ -200,7 +200,7 @@ def materialize_potential_terms(
     n = len(terms[0].vx)
     potential = np.zeros((n, n, n), dtype=float)
     for term in terms:
-        potential += term.coefficient * outer3(term.vx, term.vy, term.vz)
+        potential += (term.coefficient * term.vx)[:, None, None] * term.vy[None, :, None] * term.vz[None, None, :]
     return potential * dx**3
 
 
@@ -305,9 +305,8 @@ def apply_exp_sum_to_separable_density(
 ) -> np.ndarray:
     """指数和 Coulomb 近似を分離表現の密度に作用させる。
 
-    計算本体は CP 形式のポテンシャル項
-    :func:`apply_exp_sum_to_separable_density_cp` として保持し、呼び出し元が
-    dense な3Dテンソルを必要とするこの互換 API でのみ具現化する。
+    CP 形式のまま扱えば N³ テンソルを生成せずにエネルギーを計算できる。
+    dense なポテンシャルが必要な呼び出し元のためだけにここで具現化する。
     """
     potential_terms = apply_exp_sum_to_separable_density_cp(
         fit=fit,

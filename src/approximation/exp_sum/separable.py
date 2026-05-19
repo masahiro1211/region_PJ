@@ -16,15 +16,6 @@ def apply_1d_kernel_along_axis(
     return np.moveaxis(np.tensordot(kernel, rho, axes=([1], [axis])), 0, axis)
 
 
-def _apply_1d_kernel_along_axis(
-    kernel: np.ndarray,
-    rho: np.ndarray,
-    axis: int,
-) -> np.ndarray:
-    """後方互換用。新規コードでは apply_1d_kernel_along_axis を使う。"""
-    return apply_1d_kernel_along_axis(kernel, rho, axis)
-
-
 def apply_3d_kernel(
     kernel_1d: np.ndarray,
     rho_grid: np.ndarray,
