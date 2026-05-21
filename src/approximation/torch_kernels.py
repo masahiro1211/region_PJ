@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -143,13 +144,19 @@ def make_sparse_csr_tensor(
     # PyTorch の invariant check は nnz=0 の CSR で
     # contiguous 判定に失敗することがあるため、空行列だけ明示的に外す。
     check_invariants = data_tensor.numel() > 0
-    return torch_mod.sparse_csr_tensor(
-        indptr_tensor,
-        indices_tensor,
-        data_tensor,
-        size=shape,
-        check_invariants=check_invariants,
-    )
+    with torch_mod.sparse.check_sparse_tensor_invariants(check_invariants):
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Sparse CSR tensor support is in beta state.*",
+                category=UserWarning,
+            )
+            return torch_mod.sparse_csr_tensor(
+                indptr_tensor,
+                indices_tensor,
+                data_tensor,
+                size=shape,
+            )
 
 
 def apply_exp_sum_3d_full(
@@ -293,6 +300,35 @@ def apply_exp_sum_3d_rpca(
             inp = tmp
             tmp = apply_low_rank_axis(U_r, s_r, Vt_r, inp, axis=axis)
             tmp.add_(apply_dense_axis(S_dense, inp, axis=axis))
+        out.add_(tmp, alpha=w_k)
+    return out
+
+
+def apply_exp_sum_3d_rpca_sparse(
+    rho: Any,
+    lowrank_only_list: list,
+    sparse_list: list,
+) -> Any:
+    """rPCA (L+S) カーネルを S 成分だけ sparse CSR で作用させる。
+
+    L 成分は低ランク mode-n product、S 成分は sparse CSR 行列積で
+    それぞれ適用し、各軸で加算する。
+    """
+    _torch = _require_torch()
+    out = _torch.zeros_like(rho)
+    for w_k, U_r, s_r, Vt_r in lowrank_only_list:
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, rho, axis=0)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=1)
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, tmp, axis=2)
+        out.add_(tmp, alpha=w_k)
+    for w_k, U_r, s_r, Vt_r, S_sparse in sparse_list:
+        inp = rho
+        tmp = apply_low_rank_axis(U_r, s_r, Vt_r, inp, axis=0)
+        tmp.add_(apply_sparse_axis(S_sparse, inp, axis=0))
+        for axis in (1, 2):
+            inp = tmp
+            tmp = apply_low_rank_axis(U_r, s_r, Vt_r, inp, axis=axis)
+            tmp.add_(apply_sparse_axis(S_sparse, inp, axis=axis))
         out.add_(tmp, alpha=w_k)
     return out
 

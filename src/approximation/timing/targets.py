@@ -5,8 +5,10 @@ from __future__ import annotations
 from src.approximation.cp_coulomb import (
     apply_cp_rho_E,
     apply_cp_rho_E_rpca,
+    apply_cp_rho_E_rpca_sparse,
     apply_cp_rho_V,
     apply_cp_rho_V_rpca,
+    apply_cp_rho_V_rpca_sparse,
 )
 from src.approximation.timing.types import (
     TimingBenchmarkInputs,
@@ -18,6 +20,7 @@ from src.approximation.torch_kernels import (
     apply_exp_sum_3d_lowrank_naive,
     apply_exp_sum_3d_rpca,
     apply_exp_sum_3d_rpca_l_only,
+    apply_exp_sum_3d_rpca_sparse,
     apply_exp_sum_3d_rpca_s_only,
 )
 
@@ -25,7 +28,7 @@ from src.approximation.torch_kernels import (
 def iter_timing_targets(
     inputs: TimingBenchmarkInputs,
 ) -> list[TimingTarget]:
-    """10 手法の時間計測対象 callable を返す。
+    """時間計測対象 callable を返す。
 
     Parameters
     ----------
@@ -65,6 +68,14 @@ def iter_timing_targets(
                 inputs.rho_pt,
                 inputs.rpca_lowrank_only_data_pt,
                 inputs.rpca_dense_data_pt,
+            ),
+        ),
+        TimingTarget(
+            "rpca_sparse",
+            lambda: apply_exp_sum_3d_rpca_sparse(
+                inputs.rho_pt,
+                inputs.rpca_lowrank_only_data_pt,
+                inputs.rpca_sparse_data_pt,
             ),
         ),
         TimingTarget(
@@ -111,6 +122,23 @@ def iter_timing_targets(
                 inputs.rho_terms_pt,
                 inputs.rpca_lowrank_only_data_pt,
                 inputs.rpca_dense_data_pt,
+                inputs.dx,
+            ),
+        ),
+        TimingTarget(
+            "cp_rpca_v_sparse",
+            lambda: apply_cp_rho_V_rpca_sparse(
+                inputs.rho_terms_pt,
+                inputs.rpca_lowrank_only_data_pt,
+                inputs.rpca_sparse_data_pt,
+            ),
+        ),
+        TimingTarget(
+            "cp_rpca_e_sparse",
+            lambda: apply_cp_rho_E_rpca_sparse(
+                inputs.rho_terms_pt,
+                inputs.rpca_lowrank_only_data_pt,
+                inputs.rpca_sparse_data_pt,
                 inputs.dx,
             ),
         ),

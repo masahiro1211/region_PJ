@@ -26,13 +26,25 @@ class TimingBenchmarkInputs:
     rpca_lowrank_only_data_pt : list
         rPCA で S 成分がゼロの項の ``(weight, U_L, s_L, Vt_L)``。
     rpca_dense_data_pt : list
-        rPCA で S 成分が非ゼロの項。
+        rPCA で S 成分が非ゼロの項。S は dense Tensor。
+    rpca_sparse_data_pt : list
+        rPCA で S 成分が非ゼロの項。S は sparse CSR Tensor。
     kernel_list_pt : list
         CP-ρ full 実装用の ``(weight, K)`` リスト。
     rpca_lowrank_only_count : int
         rPCA で S 成分がゼロの項数。
     rpca_dense_count : int
         rPCA で S 成分が非ゼロの項数。
+    rpca_sparse_count : int
+        sparse-S 版 rPCA で S 成分が非ゼロの項数。
+    s_total_size : int
+        threshold 後 S 成分の総要素数。
+    s_nnz : int
+        threshold 後 S 成分の非ゼロ要素数。
+    s_zero_rate_percent : float
+        threshold 後 S 成分のゼロ要素率 [%]。
+    s_nonzero_rate_percent : float
+        threshold 後 S 成分の非ゼロ要素率 [%]。
     """
 
     dx: float
@@ -42,9 +54,15 @@ class TimingBenchmarkInputs:
     lowrank_data_pt: list
     rpca_lowrank_only_data_pt: list
     rpca_dense_data_pt: list
+    rpca_sparse_data_pt: list
     kernel_list_pt: list
     rpca_lowrank_only_count: int
     rpca_dense_count: int
+    rpca_sparse_count: int
+    s_total_size: int
+    s_nnz: int
+    s_zero_rate_percent: float
+    s_nonzero_rate_percent: float
 
 
 @dataclass(frozen=True)

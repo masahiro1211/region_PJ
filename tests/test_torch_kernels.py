@@ -12,6 +12,8 @@ pytestmark = [
 
 from src.approximation.torch_kernels import (  # noqa: E402
     apply_dense_axis,
+    apply_exp_sum_3d_rpca,
+    apply_exp_sum_3d_rpca_sparse,
     apply_low_rank_axis,
     apply_sparse_axis,
     make_sparse_csr_tensor,
@@ -125,3 +127,41 @@ def test_apply_sparse_axis_accepts_empty_csr_matrix():
     expected = np.zeros_like(rho_np)
 
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_apply_exp_sum_3d_rpca_sparse_matches_dense_s_path():
+    """S 成分を sparse CSR にしても dense-S rPCA と同じ結果になる。"""
+    rng = np.random.default_rng(1)
+    rho_np = rng.normal(size=(4, 4, 4))
+    u_np = rng.normal(size=(4, 2))
+    s_np = np.array([1.2, 0.4])
+    vt_np = rng.normal(size=(2, 4))
+    s_dense_np = np.array(
+        [
+            [0.0, 0.2, 0.0, 0.0],
+            [0.3, 0.0, 0.0, -0.1],
+            [0.0, 0.0, 0.4, 0.0],
+            [0.0, -0.5, 0.0, 0.0],
+        ],
+    )
+    indptr, indices, data = _dense_to_csr_arrays(s_dense_np)
+
+    rho = to_float64_tensor(rho_np)
+    u = to_float64_tensor(u_np)
+    s = to_float64_tensor(s_np)
+    vt = to_float64_tensor(vt_np)
+    dense = to_float64_tensor(s_dense_np)
+    sparse = make_sparse_csr_tensor(indptr, indices, data, s_dense_np.shape)
+
+    actual = apply_exp_sum_3d_rpca_sparse(
+        rho,
+        [],
+        [(0.7, u, s, vt, sparse)],
+    )
+    expected = apply_exp_sum_3d_rpca(
+        rho,
+        [],
+        [(0.7, u, s, vt, dense)],
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)

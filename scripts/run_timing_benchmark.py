@@ -52,10 +52,22 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--N", type=int, default=_cfg_N())
     parser.add_argument("--L", type=float, default=_cfg_L())
-    parser.add_argument("--density-alpha", type=float, default=_cfg_density_alpha())
-    parser.add_argument("--exp-sum-rank", type=int, default=_cfg_exp_sum_rank())
+    parser.add_argument(
+        "--density-alpha",
+        type=float,
+        default=_cfg_density_alpha(),
+    )
+    parser.add_argument(
+        "--exp-sum-rank",
+        type=int,
+        default=_cfg_exp_sum_rank(),
+    )
     parser.add_argument("--r-bench", type=int, default=_cfg_timing_r_bench())
-    parser.add_argument("--tau-bench", type=float, default=_cfg_timing_tau_bench())
+    parser.add_argument(
+        "--tau-bench",
+        type=float,
+        default=_cfg_timing_tau_bench(),
+    )
     parser.add_argument(
         "--exp-sum-label",
         default=None,
@@ -186,9 +198,15 @@ def main() -> None:
     )
 
     print(
-        f"rpca path: dense={inputs.rpca_dense_count}, "
+        f"rpca path: dense-S={inputs.rpca_dense_count}, "
+        f"sparse-S={inputs.rpca_sparse_count}, "
         f"lowrank_only={inputs.rpca_lowrank_only_count} "
         "(backend = PyTorch)"
+    )
+    print(
+        f"S threshold stats: nnz={inputs.s_nnz}/{inputs.s_total_size}, "
+        f"zero={inputs.s_zero_rate_percent:.6f}%, "
+        f"nonzero={inputs.s_nonzero_rate_percent:.6f}%"
     )
 
     output_base = _resolve_output_base(args.output_dir)
@@ -226,7 +244,12 @@ def main() -> None:
         "rpca_dir": _relative_or_str(rpca_dir),
         "output_dir": _relative_or_str(out_dir),
         "rpca_dense_count": inputs.rpca_dense_count,
+        "rpca_sparse_count": inputs.rpca_sparse_count,
         "rpca_lowrank_only_count": inputs.rpca_lowrank_only_count,
+        "s_total_size": inputs.s_total_size,
+        "s_nnz": inputs.s_nnz,
+        "s_zero_rate_percent": inputs.s_zero_rate_percent,
+        "s_nonzero_rate_percent": inputs.s_nonzero_rate_percent,
         "exp_sum_label_defaults": {
             "ranks": _cfg_exp_sum_ranks(),
             "nonneg": _cfg_exp_sum_nonneg(),

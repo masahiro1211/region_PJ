@@ -147,6 +147,35 @@ def apply_cp_rho_V_rpca(
     return result
 
 
+def apply_cp_rho_V_rpca_sparse(
+    rho_terms_pt: list,
+    lowrank_only_list: list,
+    sparse_list: list,
+) -> list:
+    """CP形式の密度から rPCA カーネルを S sparse CSR で作用させる。"""
+    result = []
+    for w_k, U_L, s_L, Vt_L in lowrank_only_list:
+        for c_m, fx, fy, fz in rho_terms_pt:
+            result.append((
+                float(w_k * c_m),
+                U_L @ (s_L * (Vt_L @ fx)),
+                U_L @ (s_L * (Vt_L @ fy)),
+                U_L @ (s_L * (Vt_L @ fz)),
+            ))
+    for w_k, U_L, s_L, Vt_L, S_sparse in sparse_list:
+        for c_m, fx, fy, fz in rho_terms_pt:
+            sx = (S_sparse @ fx[:, None]).squeeze(1)
+            sy = (S_sparse @ fy[:, None]).squeeze(1)
+            sz = (S_sparse @ fz[:, None]).squeeze(1)
+            result.append((
+                float(w_k * c_m),
+                U_L @ (s_L * (Vt_L @ fx)) + sx,
+                U_L @ (s_L * (Vt_L @ fy)) + sy,
+                U_L @ (s_L * (Vt_L @ fz)) + sz,
+            ))
+    return result
+
+
 def apply_cp_rho_E_rpca(
     rho_terms_pt: list,
     lowrank_only_list: list,
@@ -206,6 +235,55 @@ def apply_cp_rho_E_rpca(
             vx = U_L @ (s_L * (Vt_L @ fx_m)) + S_dense @ fx_m
             vy = U_L @ (s_L * (Vt_L @ fy_m)) + S_dense @ fy_m
             vz = U_L @ (s_L * (Vt_L @ fz_m)) + S_dense @ fz_m
+            for c_n, fx_n, fy_n, fz_n in rho_terms_pt:
+                E = E + (
+                    w_k * c_m * c_n
+                    * (fx_n @ vx)
+                    * (fy_n @ vy)
+                    * (fz_n @ vz)
+                )
+
+    return 0.5 * (dx ** 6) * E
+
+
+def apply_cp_rho_E_rpca_sparse(
+    rho_terms_pt: list,
+    lowrank_only_list: list,
+    sparse_list: list,
+    dx: float,
+) -> Any:
+    """CP形式の密度から rPCA カーネルを S sparse CSR でエネルギー評価する。"""
+    _torch = _require_torch()
+    E = _torch.tensor(0.0, dtype=_torch.float64)
+
+    for w_k, U_L, s_L, Vt_L in lowrank_only_list:
+        px = [Vt_L @ fx for _, fx, _, _ in rho_terms_pt]
+        py = [Vt_L @ fy for _, _, fy, _ in rho_terms_pt]
+        pz = [Vt_L @ fz for _, _, _, fz in rho_terms_pt]
+        qx = [U_L.T @ fx for _, fx, _, _ in rho_terms_pt]
+        qy = [U_L.T @ fy for _, _, fy, _ in rho_terms_pt]
+        qz = [U_L.T @ fz for _, _, _, fz in rho_terms_pt]
+
+        for i, (c_m, _, _, _) in enumerate(rho_terms_pt):
+            sp_x = s_L * px[i]
+            sp_y = s_L * py[i]
+            sp_z = s_L * pz[i]
+            for j, (c_n, _, _, _) in enumerate(rho_terms_pt):
+                E = E + (
+                    w_k * c_m * c_n
+                    * (qx[j] @ sp_x)
+                    * (qy[j] @ sp_y)
+                    * (qz[j] @ sp_z)
+                )
+
+    for w_k, U_L, s_L, Vt_L, S_sparse in sparse_list:
+        for c_m, fx_m, fy_m, fz_m in rho_terms_pt:
+            sx = (S_sparse @ fx_m[:, None]).squeeze(1)
+            sy = (S_sparse @ fy_m[:, None]).squeeze(1)
+            sz = (S_sparse @ fz_m[:, None]).squeeze(1)
+            vx = U_L @ (s_L * (Vt_L @ fx_m)) + sx
+            vy = U_L @ (s_L * (Vt_L @ fy_m)) + sy
+            vz = U_L @ (s_L * (Vt_L @ fz_m)) + sz
             for c_n, fx_n, fy_n, fz_n in rho_terms_pt:
                 E = E + (
                     w_k * c_m * c_n

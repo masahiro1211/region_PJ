@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from src.approximation.timing.types import TimingBenchmarkInputs
+from src.approximation.torch_kernels import make_sparse_csr_tensor
 from src.approximation.torch_kernels import to_float64_tensor
 from src.potential.separable_density import (
     make_gaussian_density_terms,
@@ -12,6 +13,25 @@ from src.potential.separable_density import (
 )
 from src.utils.cache import Rpca1dComponents
 from src.utils.grid import build_coords_centered
+
+
+def _dense_to_csr_arrays(
+    matrix: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """dense 行列から PyTorch sparse CSR 用の配列を作る。"""
+    indptr = [0]
+    indices = []
+    data = []
+    for row in matrix:
+        nz = np.nonzero(row)[0]
+        indices.extend(nz.tolist())
+        data.extend(row[nz].tolist())
+        indptr.append(len(indices))
+    return (
+        np.array(indptr, dtype=np.int64),
+        np.array(indices, dtype=np.int64),
+        np.array(data, dtype=np.float64),
+    )
 
 
 def validate_rank(
@@ -80,7 +100,7 @@ def prepare_timing_benchmark_inputs(
     Returns
     -------
     inputs : TimingBenchmarkInputs
-        10 手法の時間計測に必要な PyTorch 入力一式。
+        時間計測に必要な PyTorch 入力一式。
     """
     validate_rank(rpca_1d_list, r_bench)
     dx, x_axis = build_coords_centered(n_grid, length)
@@ -98,11 +118,14 @@ def prepare_timing_benchmark_inputs(
     ]
 
     rpca_dense_data_pt = []
+    rpca_sparse_data_pt = []
     rpca_lowrank_only_data_pt = []
     lowrank_data_pt = []
     full_kernels_pt = []
     lowrank_only_count = 0
     dense_count = 0
+    s_total_size = 0
+    s_nnz = 0
 
     for weight, kernel, k_data in zip(weights, k_1d_list, rpca_1d_list):
         w_k = float(weight)
@@ -118,6 +141,8 @@ def prepare_timing_benchmark_inputs(
         s_1d = k_data["S_1d"]
         s_thr = np.where(np.abs(s_1d) > tau_bench, s_1d, 0.0)
         nnz = np.count_nonzero(s_thr)
+        s_total_size += s_thr.size
+        s_nnz += int(nnz)
 
         lowrank_data_pt.append(
             (
@@ -138,14 +163,19 @@ def prepare_timing_benchmark_inputs(
             )
             lowrank_only_count += 1
         else:
+            s_dense_pt = to_float64_tensor(s_thr)
+            indptr, indices, data = _dense_to_csr_arrays(s_thr)
+            s_sparse_pt = make_sparse_csr_tensor(
+                indptr,
+                indices,
+                data,
+                s_thr.shape,
+            )
             rpca_dense_data_pt.append(
-                (
-                    w_k,
-                    ur_l_pt,
-                    sr_l_pt,
-                    vtr_l_pt,
-                    to_float64_tensor(s_thr),
-                )
+                (w_k, ur_l_pt, sr_l_pt, vtr_l_pt, s_dense_pt)
+            )
+            rpca_sparse_data_pt.append(
+                (w_k, ur_l_pt, sr_l_pt, vtr_l_pt, s_sparse_pt)
             )
             dense_count += 1
 
@@ -153,6 +183,11 @@ def prepare_timing_benchmark_inputs(
         (float(w), to_float64_tensor(kernel))
         for w, kernel in zip(weights, k_1d_list)
     ]
+
+    s_nonzero_rate_percent = (
+        100.0 * s_nnz / s_total_size if s_total_size else 0.0
+    )
+    s_zero_rate_percent = 100.0 - s_nonzero_rate_percent
 
     return TimingBenchmarkInputs(
         dx=dx,
@@ -162,7 +197,13 @@ def prepare_timing_benchmark_inputs(
         lowrank_data_pt=lowrank_data_pt,
         rpca_lowrank_only_data_pt=rpca_lowrank_only_data_pt,
         rpca_dense_data_pt=rpca_dense_data_pt,
+        rpca_sparse_data_pt=rpca_sparse_data_pt,
         kernel_list_pt=kernel_list_pt,
         rpca_lowrank_only_count=lowrank_only_count,
         rpca_dense_count=dense_count,
+        rpca_sparse_count=len(rpca_sparse_data_pt),
+        s_total_size=s_total_size,
+        s_nnz=s_nnz,
+        s_zero_rate_percent=s_zero_rate_percent,
+        s_nonzero_rate_percent=s_nonzero_rate_percent,
     )
